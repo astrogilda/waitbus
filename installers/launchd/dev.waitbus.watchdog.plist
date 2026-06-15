@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.waitbus.watchdog</string>
+
+    <!-- Resolved by `waitbus install-launchd` at install time. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/waitbus</string>
+        <string>watchdog-check</string>
+        <string>run</string>
+    </array>
+
+    <!-- Periodic ingestion-silence detector. Matches the Linux timer's
+         OnUnitActiveSec=5min cadence. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/waitbus-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/waitbus-watchdog.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>XDG_RUNTIME_DIR</key>
+        <string>__RUNTIME_DIR__</string>
+    </dict>
+</dict>
+</plist>

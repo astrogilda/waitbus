@@ -1,0 +1,54 @@
+waitbus benchmark corpus — license attribution
+==============================================
+
+This NOTICE accompanies the data artefacts under `benchmarks/data/`. The
+corpus methodology and source-attribution rationale are documented in
+`benchmarks/BENCHMARKING.md`.
+
+1. waitbus corpus generator code
+--------------------------------
+Files: `benchmarks/gen_corpus.py`, `scripts/derive_gh_distributions.py`,
+       `benchmarks/data/corpus.jsonl.gz`, `benchmarks/data/gh_distributions.toml`.
+License: MIT (same as the surrounding waitbus project).
+Copyright: waitbus contributors.
+
+The committed `corpus.jsonl.gz` is seeded synthetic output. No real
+GitHub webhook payloads, account names, repository names, or PII are
+included.
+
+2. Vendored payload templates (octokit/webhooks)
+------------------------------------------------
+Files under `benchmarks/data/payload_templates/`.
+Upstream: https://github.com/octokit/webhooks
+Upstream commit: 76f8deb2d40c05aa72a8281eb0113dbe5e6a8495
+License: MIT (Copyright (c) 2018 Gregor Martynus).
+Used as field-shape templates for the workflow_run synthetic generator.
+
+3. Summary statistics derived from workflow-histories (Cardoen et al.)
+----------------------------------------------------------------------
+Source: Cardoen, Mens, Decan (University of Mons). A dataset of GitHub
+        Actions workflow histories. MSR 2024.
+Zenodo DOI: 10.5281/zenodo.17301952
+License: CC-BY-4.0
+Use: numeric summary statistics (workflow-name frequencies, branch-name
+     pattern frequencies) committed to `gh_distributions.toml`. No raw
+     dataset content is redistributed.
+
+4. Summary statistics derived from GHALogs (Moriconi et al.)
+------------------------------------------------------------
+Source: Moriconi, Durieux, Falleri, Troncy, Francillon. GHALogs: a
+        large-scale dataset of GitHub Actions runs. 513k workflow runs
+        across 2.3M individual steps over 116k workflows / 25k projects.
+Zenodo DOI: 10.5281/zenodo.10154920
+License: CC-BY-SA-4.0 (Share-Alike).
+Use: summary statistics only (conclusion frequencies, Hawkes-process
+     inter-arrival parameters per repo size class, per-event-type
+     transition matrix). Numeric summaries are not derivative works in
+     the typical Share-Alike sense; no raw GHALogs content is
+     redistributed. If the waitbus project later embeds raw GHALogs
+     content, the Share-Alike contagion must be re-evaluated.
+
+5. Methodology reference
+------------------------
+The decision to adopt a seeded synthetic generator (rather than
+real-capture + redaction) is documented in `benchmarks/BENCHMARKING.md`.

@@ -1,0 +1,21 @@
+{
+  "claude_channel": {
+    "method": "notifications/claude/channel",
+    "params": {
+      "content": "<waitbus:untrusted label=\"event-summary\">test run</waitbus:untrusted>",
+      "meta": {
+        "repo": "test-org/test-repo",
+        "kind": "workflow_run",
+        "id": "01HXZZZZZZZZZZZZZZZZZZZZZZ",
+        "run_id": "",
+        "conclusion": "pending"
+      }
+    }
+  },
+  "resources_updated": {
+    "method": "notifications/resources/updated",
+    "params": {
+      "uri": "waitbus://event/01HXZZZZZZZZZZZZZZZZZZZZZZ"
+    }
+  }
+}

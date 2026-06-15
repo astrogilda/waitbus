@@ -1,0 +1,66 @@
+{
+  "action": "submitted",
+  "review": {
+    "id": 4000001,
+    "node_id": "PRR_edge007",
+    "user": {
+      "login": "<redacted>",
+      "id": 99000002,
+      "type": "User",
+      "html_url": "https://github.com/<redacted>"
+    },
+    "body": "Contact me at <redacted>@example.com or call <redacted> if you have questions. LGTM overall. — <redacted full name>",
+    "state": "APPROVED",
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture/pull/43#pullrequestreview-4000001",
+    "pull_request_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/pulls/43",
+    "submitted_at": "2025-06-01T16:00:00Z",
+    "commit_id": "7777777777777777777777777777777777777777",
+    "author_association": "CONTRIBUTOR"
+  },
+  "pull_request": {
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/pulls/43",
+    "id": 5000002,
+    "node_id": "PR_edge007",
+    "number": 43,
+    "state": "open",
+    "title": "feat: new feature",
+    "body": "Adds the new feature. Reviewed by <redacted>@example.com",
+    "user": {
+      "login": "astrogilda",
+      "id": 99000001,
+      "type": "User"
+    },
+    "head": {
+      "label": "astrogilda:feature/new",
+      "ref": "feature/new",
+      "sha": "7777777777777777777777777777777777777777"
+    },
+    "base": {
+      "label": "astrogilda:main",
+      "ref": "main",
+      "sha": "8888888888888888888888888888888888888888"
+    }
+  },
+  "repository": {
+    "id": 123456789,
+    "node_id": "R_waitbus_demo",
+    "name": "waitbus-demo-fixture",
+    "full_name": "astrogilda/waitbus-demo-fixture",
+    "private": false,
+    "owner": {
+      "login": "astrogilda",
+      "id": 99000001,
+      "type": "User"
+    },
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture",
+    "description": "fixture repo for waitbus test corpus",
+    "fork": false,
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "<redacted>",
+    "id": 99000002,
+    "type": "User"
+  }
+}

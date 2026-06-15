@@ -1,0 +1,16 @@
+# Tier 1 — regression baseline for the SDK MCP wire layer.
+# Each non-comment line is one JSON-RPC envelope, captured by driving
+# the real waitbus.mcp emit path with a v1 broadcast EVENT frame
+# (kind=event, event_id identity, event_type class).
+#
+# Purpose: lock the SDK wire output to a known shape so a future SDK
+# minor-bump that silently alters serialization order or omits a field
+# trips this test. Frame-by-frame semantic compare (parsed JSON), NOT
+# byte-string identity — pydantic emits its own field order.
+#
+# Regeneration: scripts run the real emit path (see the migration that
+# moved this to broadcast wire protocol v1). The Tier 2 fixture
+# (mcp_wire_spec_reference.jsonl) is the spec-anchored counterpart.
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{"claude/channel":{}},"logging":{}},"serverInfo":{"name":"waitbus","version":"0.5.0","title":"waitbus \u2014 local GitHub Actions status reporter"}}}
+{"method":"notifications/claude/channel","params":{"content":"<waitbus:untrusted label=\"event-summary\">test run</waitbus:untrusted>","meta":{"repo":"test-org/test-repo","kind":"workflow_run","id":"01HXZZZZZZZZZZZZZZZZZZZZZZ","run_id":"","conclusion":"pending"}},"jsonrpc":"2.0"}
+{"jsonrpc":"2.0","method":"notifications/resources/updated","params":{"uri":"waitbus://event/01HXZZZZZZZZZZZZZZZZZZZZZZ"}}

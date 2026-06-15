@@ -1,0 +1,83 @@
+name: waitbus workflow relay
+description: >-
+  Post a workflow-completion payload to your own waitbus webhook
+  listener URL. The bus is workstation-local; this action only works
+  through a relay you operate yourself (see README.md). The built-in
+  github source needs none of this.
+inputs:
+  listener-url:
+    description: >-
+      Base URL of YOUR relay to the waitbus listener (e.g. a tailscale
+      funnel or cloudflared hostname). The action posts to
+      <listener-url>/webhook.
+    required: true
+  webhook-secret:
+    description: >-
+      The HMAC secret your waitbus listener validates X-Hub-Signature-256
+      against. Pass it from a repository secret, never a literal.
+    required: true
+  conclusion:
+    description: >-
+      The run conclusion to report. Callers pass the job status
+      (success / failure / cancelled) or a needs.* result.
+    required: true
+  delivery-suffix:
+    description: >-
+      Optional extra token appended to the X-GitHub-Delivery id, for
+      callers that relay more than one completion per run attempt.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Post workflow completion to the waitbus listener
+      shell: bash
+      env:
+        LISTENER_URL: ${{ inputs.listener-url }}
+        WEBHOOK_SECRET: ${{ inputs.webhook-secret }}
+        CONCLUSION: ${{ inputs.conclusion }}
+        DELIVERY_SUFFIX: ${{ inputs.delivery-suffix }}
+      run: |
+        set -euo pipefail
+        # Build a minimal workflow_run-shaped body from the runner context.
+        # python3 -c handles the JSON quoting; every GitHub-hosted runner
+        # ships python3.
+        BODY="$(python3 <<'PY'
+        import json
+        import os
+
+        owner, _, name = os.environ["GITHUB_REPOSITORY"].partition("/")
+        print(
+            json.dumps(
+                {
+                    "action": "completed",
+                    "repository": {"name": name, "owner": {"login": owner}},
+                    "workflow_run": {
+                        "id": int(os.environ["GITHUB_RUN_ID"]),
+                        "name": os.environ.get("GITHUB_WORKFLOW", ""),
+                        "head_branch": os.environ.get("GITHUB_REF_NAME", ""),
+                        "head_sha": os.environ.get("GITHUB_SHA", ""),
+                        "status": "completed",
+                        "conclusion": os.environ["CONCLUSION"],
+                    },
+                }
+            )
+        )
+        PY
+        )"
+        # Compute the HMAC in python3 with the secret read from the
+        # environment -- never on a process command line, where it would
+        # be visible in /proc to concurrent runner processes.
+        SIG="$(printf '%s' "$BODY" | python3 -c '
+        import hashlib, hmac, os, sys
+
+        body = sys.stdin.buffer.read()
+        secret = os.environ["WEBHOOK_SECRET"].encode()
+        print(hmac.new(secret, body, hashlib.sha256).hexdigest())
+        ')"
+        curl -fsS -X POST "${LISTENER_URL%/}/webhook" \
+          -H "X-GitHub-Event: workflow_run" \
+          -H "X-GitHub-Delivery: gha-relay-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}${DELIVERY_SUFFIX:+-$DELIVERY_SUFFIX}" \
+          -H "X-Hub-Signature-256: sha256=${SIG}" \
+          -H "Content-Type: application/json" \
+          --data-binary "$BODY"

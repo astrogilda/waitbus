@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use waitbus in your work, please cite it."
+title: waitbus
+abstract: >-
+  The workstation-local, cross-harness status bus — one blocking wait verb that
+  reasons across every local source (GitHub Actions CI, pytest, Docker,
+  filesystem, Prometheus Alertmanager) at once. D-Bus for agents, with a replay
+  log. Fully offline, zero cloud.
+type: software
+authors:
+  - given-names: Sankalp
+    family-names: Gilda
+    email: sankalp.gilda@gmail.com
+repository-code: "https://github.com/astrogilda/waitbus"
+url: "https://github.com/astrogilda/waitbus"
+license: MIT
+version: 0.1.0

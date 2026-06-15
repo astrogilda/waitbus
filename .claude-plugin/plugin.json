@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "schemaVersion": 1,
+  "name": "waitbus",
+  "version": "0.1.0",
+  "description": "Workstation-local event bus + blocking wait/emit primitive for agents: wait on or emit CI, pytest, Docker, filesystem, and Prometheus Alertmanager events without polling, plus a third-party plugin API (`waitbus.sources.v1` entry-point group) for custom sources. GitHub Actions is source #1, with sub-second matrix-cell failure detection via workflow_job + workflow_run.",
+  "author": {
+    "name": "Sankalp Gilda",
+    "email": "sankalp.gilda@gmail.com"
+  },
+  "homepage": "https://github.com/astrogilda/waitbus",
+  "repository": "https://github.com/astrogilda/waitbus",
+  "license": "MIT",
+  "keywords": [
+    "ci",
+    "github-actions",
+    "mcp",
+    "broadcast",
+    "webhook"
+  ],
+  "mcpServers": "../.mcp.json"
+}

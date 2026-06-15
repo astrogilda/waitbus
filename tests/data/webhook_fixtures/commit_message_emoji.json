@@ -1,0 +1,64 @@
+{
+  "ref": "refs/heads/main",
+  "before": "4444444444444444444444444444444444444444",
+  "after": "5555555555555555555555555555555555555555",
+  "repository": {
+    "id": 123456789,
+    "node_id": "R_waitbus_demo",
+    "name": "waitbus-demo-fixture",
+    "full_name": "astrogilda/waitbus-demo-fixture",
+    "private": false,
+    "owner": {
+      "login": "astrogilda",
+      "id": 99000001,
+      "type": "User"
+    },
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture",
+    "description": "fixture repo for waitbus test corpus",
+    "fork": false,
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture",
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "<redacted>",
+    "email": "<redacted>"
+  },
+  "sender": {
+    "login": "astrogilda",
+    "id": 99000001,
+    "type": "User"
+  },
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/astrogilda/waitbus-demo-fixture/compare/4444444444...5555555555",
+  "commits": [
+    {
+      "id": "5555555555555555555555555555555555555555",
+      "tree_id": "6666666666666666666666666666666666666666",
+      "distinct": true,
+      "message": "🇺🇸 flag emoji in commit message 🇫🇷 🇩🇪 regional indicator pairs",
+      "timestamp": "2025-06-01T15:00:00Z",
+      "url": "https://github.com/astrogilda/waitbus-demo-fixture/commit/5555555555555555555555555555555555555555",
+      "author": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+      "committer": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+      "added": ["src/feature.py"],
+      "removed": [],
+      "modified": []
+    }
+  ],
+  "head_commit": {
+    "id": "5555555555555555555555555555555555555555",
+    "tree_id": "6666666666666666666666666666666666666666",
+    "distinct": true,
+    "message": "🇺🇸 flag emoji in commit message 🇫🇷 🇩🇪 regional indicator pairs",
+    "timestamp": "2025-06-01T15:00:00Z",
+    "url": "https://github.com/astrogilda/waitbus-demo-fixture/commit/5555555555555555555555555555555555555555",
+    "author": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+    "committer": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+    "added": ["src/feature.py"],
+    "removed": [],
+    "modified": []
+  }
+}

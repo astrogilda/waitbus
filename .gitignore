@@ -1,0 +1,73 @@
+# Python build / cache artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Virtualenv (managed by `uv sync` or `pip install -e`)
+.venv/
+
+# Test / type-check / property-test / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.json
+htmlcov/
+
+# IDE / editor scratch
+.vscode/
+.idea/
+
+# LSP/MCP project state cache (local, no upstream consumers)
+.serena/
+
+# Claude harness session state (per-conversation correlation IDs; not source)
+.claude_correlation/
+
+# Per-run benchmark output JSONs (host- and timestamp-stamped). Only the
+# committed baselines under benchmarks/baselines/ are tracked; per-run
+# results land here for ad-hoc inspection but are runner-specific.
+benchmarks/results/*.json
+
+# Vendored hetzner-bench-toolkit clone used by scripts/run_soak_on_hetzner.sh
+# on the maintainer-side soak runner. It is an embedded git checkout that
+# should not be tracked here and is already excluded from the sdist via
+# `[tool.hatch.build.targets.sdist].exclude` in pyproject.toml.
+scripts/.hbt/
+
+# Crawl / context bundles (derived artifacts, never committed)
+crawl-output/
+
+# Operator-local pytest run logs (per-run timestamped .log + .junit.xml +
+# warnings.log). Persistent across reboots so a failed / skipped / warned
+# run can be retroactively inspected without re-execution. Drop here via
+# scripts/run_full_pytest.sh.
+.local-pytest-logs/
+
+# Operator-local stress run logs (per-run timestamped .log + .verdict.json
+# + .progress.jsonl). Persistent across reboots so an operator-driven
+# real-mode stress invocation can be re-inspected without re-execution.
+.local-stress-logs/
+
+# Operator-local reference fixtures: live-recorded LLM envelopes the
+# operator captures off ``claude -p`` / ``gemini -p`` runs and uses as a
+# source-of-truth shape reference. The tests embed envelope content
+# inline (see ``tests/test_stress_real_drivers.py``); this directory is
+# the operator's working copy of the live captures and is not shipped.
+tests/fixtures/
+
+# Code-intelligence index snapshot — generated, rebuildable; not source.
+codedb.snapshot
+
+# Benchmark run output — per-run timestamped verdict/log/progress scratch the
+# benches write here; a good run is promoted to benchmarks/baselines/ (which IS
+# committed). The dir itself is kept via .gitkeep; individual runs are scratch.
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+
+# local soak-run outputs (fetched from Hetzner)
+soak-verdict.json
+soak-verdict.json.progress.jsonl

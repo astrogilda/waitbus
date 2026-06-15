@@ -1,0 +1,18 @@
+name: longrunning
+
+# A 30-second sleep job that demonstrates `waitbus wait` blocking on a
+# slow workflow_run. Useful for the "agent waits, gets pinged the
+# moment CI clears" demo flow rather than busy-polling the GitHub API.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sleep:
+    name: sleep-30s
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Sleeping for 30 seconds; an agent calling 'waitbus wait' against this run will be pinged the moment the job finishes."
+          sleep 30
+          echo "Done."

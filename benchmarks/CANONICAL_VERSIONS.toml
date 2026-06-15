@@ -1,0 +1,68 @@
+# Canonical bench dependency versions.
+#
+# This file pins the exact versions of bench-internal libraries that the
+# heterogeneous-swarm bench was developed and verified against. The bench
+# preflight reads this file and refuses to run if the installed version of
+# any pinned library drifts off the recorded major.minor band.
+#
+# These pins are bench-internal (consumer pyproject.toml does NOT consume
+# this file). The bench tracks one known-good version of each library so
+# that bumps to the consumer-facing pyproject pins do not silently
+# invalidate bench provenance. To update a pin: bump the band here, re-run
+# the full bench suite, confirm the verdict numbers are unchanged or note
+# the version delta, then land the bump in one commit.
+#
+# Each entry's `band` is a major.minor range — the bench accepts any patch
+# inside the band but refuses any major or minor bump without a deliberate
+# bench-suite re-verification. The `observed` field records the exact
+# version present when this file was last updated, so a future maintainer
+# can correlate any verdict-number drift with a specific library bump.
+#
+# Format per package:
+#   [packages.<name>]
+#   band     = "<lower>,<upper-exclusive>"   # SemVer range, no spaces
+#   observed = "<exact version at last update>"
+#   notes    = "<one-line reason for the pin or band choice>"
+
+[meta]
+last_updated = "2026-06-03"
+
+[packages.pydantic-ai-slim]
+band     = ">=1.104,<2.0"
+observed = "1.104.0"
+notes    = "Token-usage capture path uses result.usage.input_tokens / .output_tokens; was deprecated request_tokens path pre-1.104."
+
+[packages.langgraph]
+band     = ">=1.2,<2.0"
+observed = "1.2.2"
+notes    = "StateGraph + ToolNode shape — captured wakeup events ride the same agent_message contract as the other drivers."
+
+[packages.langchain-core]
+band     = ">=1.4,<2.0"
+observed = "1.4.0"
+notes    = "AIMessage.usage_metadata path; do NOT use with_structured_output (it strips usage_metadata)."
+
+[packages.langchain-openai]
+band     = ">=1.0,<2.0"
+observed = "1.1.9"
+notes    = "ChatOpenAI binding; pinned-band only, no exact pin (langchain-openai drifts faster than pydantic-ai)."
+
+[packages.openai]
+band     = ">=2.0,<3.0"
+observed = "2.41.0"
+notes    = "Bumped to the v2 band so pydantic-ai-slim[openai]>=1.104 transitive constraint is satisfiable. Chat Completions response shape STILL exposes usage.prompt_tokens / .completion_tokens in v2; only the Responses API uses input_tokens / output_tokens, which the bench does not exercise."
+
+[packages.tiktoken]
+band     = ">=0.7,<1.0"
+observed = "0.13.0"
+notes    = "Uniform-tokeniser comparison column in Experiment C; encoding_for_model('gpt-4o-mini') -> o200k_base."
+
+[packages.msgspec]
+band     = ">=0.19,<1.0"
+observed = "0.21.1"
+notes    = "All verdict structs frozen msgspec.Struct, kw_only; encode/decode via msgspec.json."
+
+[packages.hdrhistogram]
+band     = ">=0.10,<1.0"
+observed = "0.10.3"
+notes    = "HdrRecorder underlying histogram; record_value(int_ns); negative deltas raise (not clamp)."

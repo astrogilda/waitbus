@@ -1,0 +1,45 @@
+name: matrix
+
+# A small 3-cell matrix workflow that exercises waitbus's github webhook
+# delivery. One cell intentionally fails so a downstream waitbus
+# subscriber can observe a workflow_run frame with conclusion=failure
+# without having to wait for a real bug.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: pass-fast
+            python-version: "3.13"
+            should_fail: "false"
+          - name: pass-with-traceback-shape
+            python-version: "3.13"
+            should_fail: "false"
+          - name: fail-deterministic
+            python-version: "3.13"
+            should_fail: "true"
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install pytest
+      - name: Test
+        env:
+          CELL_SHOULD_FAIL: ${{ matrix.should_fail }}
+        run: |
+          if [[ "$CELL_SHOULD_FAIL" == "true" ]]; then
+            pytest tests/test_demo.py::test_intentional_fail -vv
+          else
+            pytest tests/test_demo.py -k "not intentional_fail" -vv
+          fi
