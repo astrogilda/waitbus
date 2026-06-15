@@ -1,0 +1,50 @@
+[Unit]
+Description=waitbus broadcast hub
+Documentation=https://github.com/astrogilda/waitbus/blob/main/SKILL.md
+Requires=waitbus-broadcast.socket
+After=waitbus-broadcast.socket
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=%h/.local/bin/waitbus broadcast serve
+Restart=on-failure
+RestartSec=5s
+StateDirectory=waitbus
+StateDirectoryMode=0700
+RuntimeDirectory=waitbus
+RuntimeDirectoryMode=0700
+WorkingDirectory=%S/waitbus
+StandardOutput=journal
+StandardError=journal
+
+# Optional broadcast-time bearer token. Decrypted by systemd at
+# unit-start and read by _secrets.get_secret. Absent credential file
+# means token-less subscribers are accepted (single-user-workstation
+# threat model). Stage via:
+#   waitbus install-credentials broadcast-token
+LoadCredentialEncrypted=broadcast-token:/etc/credstore.encrypted/waitbus.broadcast-token.cred
+
+# Hardening (systemd >= 246).
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%S/waitbus %t/waitbus
+NoNewPrivileges=true
+MemoryDenyWriteExecute=true
+LimitNOFILE=1024
+UMask=0077
+Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8
+# ProtectKernelTunables=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectKernelModules=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectControlGroups=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# Intentionally no [Install] section. The .socket unit pulls this
+# service in on first subscriber connect; adding WantedBy=default.target
+# here would form the same boot ordering cycle that waitbus-forward@
+# and waitbus-watchdog now avoid.

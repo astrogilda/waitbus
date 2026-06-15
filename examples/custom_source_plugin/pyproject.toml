@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.27,<2.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "waitbus-circleci"
+version = "0.1.0"
+description = "Reference plugin demonstrating the waitbus.sources.v1 entry-point group — CircleCI pipeline finished events."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Plugin Author", email = "author@example.com" }]
+keywords = ["circleci", "ci", "waitbus", "event-bus"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: System :: Monitoring",
+]
+dependencies = [
+  "waitbus>=0.1,<0.2",
+]
+
+[project.entry-points."waitbus.sources.v1"]
+# waitbus enumerates this group at daemon startup via
+# importlib.metadata.entry_points(group="waitbus.sources.v1") and calls
+# plugin.spec() to retrieve the SourceSpec registration shape.
+circleci = "waitbus_circleci:plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/waitbus_circleci"]
+
+[tool.hatch.build.targets.sdist]
+# Keep this plugin out of the waitbus sdist if it is ever co-located in
+# the waitbus source tree. As a standalone package this block has no
+# effect but documents the intent.
+exclude = ["examples/"]

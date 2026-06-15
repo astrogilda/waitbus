@@ -1,0 +1,53 @@
+[Unit]
+Description=waitbus prometheus_watchdog absence detector (oneshot)
+Documentation=https://github.com/astrogilda/waitbus/blob/main/SKILL.md
+# Deliberately no Requires=/BindsTo=waitbus-listener.service: the
+# absence-detector reads MAX(received_at) from the SQLite DB, which
+# persists across listener restarts. A strict listener dependency would
+# suppress correct STALE alerts during a listener outage — the failure
+# mode the watchdog exists to surface. After= is ordering-only; the
+# timer is what enables this unit at boot.
+After=waitbus-listener.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/waitbus watchdog-check run
+# Exit codes:
+#   0  fresh (or pre-bootstrap silent)
+#   1  stale - flag file written, notify-send fired (transition only)
+#   2  db unreachable / schema mismatch
+# We treat all three as success from systemd's perspective so the timer
+# keeps firing; the operator-visible signal is the flag file + PS1 prompt.
+SuccessExitStatus=0 1 2
+StateDirectory=waitbus
+StateDirectoryMode=0700
+Nice=10
+
+# Hardening (systemd >= 246).
+ProtectSystem=strict
+ProtectHome=tmpfs
+# The watchdog reads the SQLite DB and writes its `watchdog_seen` /
+# `watchdog_stale` flag files under the per-user state dir (`%S/waitbus`).
+# systemd creates `%S/waitbus` automatically when `StateDirectory=waitbus`
+# is declared on the long-lived units; oneshot units like this one inherit
+# the same path via the `%S` specifier. Listing both BindReadOnly + ReadWrite
+# was redundant because ReadWritePaths already grants the necessary read access.
+ReadWritePaths=%S/waitbus
+PrivateTmp=true
+NoNewPrivileges=true
+MemoryDenyWriteExecute=true
+LimitNOFILE=1024
+UMask=0077
+Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8
+# ProtectKernelTunables=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectKernelModules=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectControlGroups=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# No [Install] section: this unit is fired by waitbus-watchdog.timer.
+# Adding WantedBy=default.target would form a boot ordering cycle
+# through waitbus-listener.service.

@@ -1,0 +1,81 @@
+name: soak
+
+# Operator-triggered soak run. There is intentionally no schedule and
+# no push trigger -- the soak is a pre-release qualification step the
+# operator decides to run, not a continuous-background workflow.
+#
+# The workflow ALWAYS runs `scripts.soak`. It NEVER triggers a
+# publish, tag-push, or any release step regardless of verdict.
+# Publishing a release is a separate manual step.
+#
+# 24h+ soak runs are launched OUT-OF-BAND via
+# scripts/run_soak_on_hetzner.sh against a Hetzner CCX23 VM (dedicated
+# vCPU; matches WS-A bench-baseline hardware; avoids the GHA 6h
+# per-job hard cap on ubuntu-latest). This in-CI workflow is the
+# short-duration smoke path -- max 6h, default 5m.
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Soak duration (max 6h on GitHub-hosted runner; for 24h+ runs use scripts/run_soak_on_hetzner.sh against CCX23)"
+        required: true
+        default: "5m"
+      rate:
+        description: "Emit rate (events/sec)"
+        required: true
+        default: "5"
+      inject_suspend_cycles:
+        description: "Suspend cycles: 'none' or 'standard'"
+        required: true
+        default: "none"
+
+concurrency:
+  group: soak-${{ github.ref }}
+  cancel-in-progress: false  # never preempt a running soak
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6h: GitHub-hosted runner per-job hard cap. 24h+ runs go via scripts/run_soak_on_hetzner.sh.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-extras"
+      - name: Run soak
+        run: |
+          uv run python -m scripts.soak \
+            --duration "${{ inputs.duration }}" \
+            --rate "${{ inputs.rate }}" \
+            --inject-suspend-cycles "${{ inputs.inject_suspend_cycles }}" \
+            --output soak-verdict.json
+      - name: Upload soak verdict
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: soak-verdict-${{ github.run_id }}
+          path: soak-verdict.json
+          retention-days: 90
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Soak verdict'
+            if [[ -f soak-verdict.json ]]; then
+              jq -r '"overall_passed: " + (.overall_passed | tostring)' soak-verdict.json
+              echo ''
+              echo '```json'
+              jq '.verdicts' soak-verdict.json
+              echo '```'
+              echo ''
+              echo 'NOTE: This verdict is informational. No publish or tag-push action runs from this workflow regardless of outcome.'
+            else
+              echo 'soak-verdict.json missing'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

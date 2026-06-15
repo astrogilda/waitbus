@@ -1,0 +1,14 @@
+[Unit]
+Description=waitbus prometheus_watchdog absence detector (every 5 min)
+
+[Timer]
+# OnBootSec gives the boot-time listener a 2-minute warmup before the first
+# stale check; OnUnitActiveSec=5min nominally matches the upstream prometheus
+# Watchdog alert group_interval (operator-configured on the alertmanager side).
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=waitbus-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,53 @@
+[Unit]
+Description=waitbus GitHub webhook listener (loopback :9000)
+Documentation=https://github.com/astrogilda/waitbus/blob/main/SKILL.md
+After=default.target
+
+[Service]
+Type=simple
+# `waitbus listener serve` is the unified CLI entry point. Resolves
+# at ~/.local/bin/ for `pip install --user`, `uv tool install`, and
+# `pipx install`.
+ExecStart=%h/.local/bin/waitbus listener serve
+Restart=on-failure
+RestartSec=5s
+# State (SQLite DB, scaffolds, cursors) lives under the systemd-managed
+# per-user state dir; runtime sockets live under the runtime dir.
+# systemd resolves %S to $XDG_STATE_HOME and %t to $XDG_RUNTIME_DIR,
+# and the StateDirectory= / RuntimeDirectory= directives ensure systemd
+# creates them with correct ownership and 0700 mode before the unit starts.
+StateDirectory=waitbus
+StateDirectoryMode=0700
+RuntimeDirectory=waitbus
+RuntimeDirectoryMode=0700
+WorkingDirectory=%S/waitbus
+StandardOutput=journal
+StandardError=journal
+
+# Credentials decrypted by systemd at unit-start; the listener reads
+# them from $CREDENTIALS_DIRECTORY/<name> via _secrets.get_secret.
+# Stage via: waitbus install-credentials <name>
+LoadCredentialEncrypted=github-webhook-secret:/etc/credstore.encrypted/waitbus.github-webhook-secret.cred
+LoadCredentialEncrypted=alertmanager-hmac:/etc/credstore.encrypted/waitbus.alertmanager-hmac.cred
+
+# Hardening (systemd >= 246).
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%S/waitbus %t/waitbus
+NoNewPrivileges=true
+MemoryDenyWriteExecute=true
+LimitNOFILE=1024
+UMask=0077
+Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8
+# ProtectKernelTunables=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectKernelModules=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectControlGroups=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=default.target

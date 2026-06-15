@@ -1,0 +1,89 @@
+{
+  "action": "completed",
+  "workflow": {
+    "id": 7000002,
+    "name": "CI",
+    "path": ".github/workflows/ci.yml",
+    "state": "active",
+    "created_at": "2024-01-10T09:00:00.000Z",
+    "updated_at": "2024-01-10T09:00:00.000Z",
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/workflows/7000002",
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture/blob/main/.github/workflows/ci.yml",
+    "badge_url": "https://github.com/astrogilda/waitbus-demo-fixture/workflows/CI/badge.svg",
+    "node_id": "W_edge002"
+  },
+  "workflow_run": {
+    "id": 8000002,
+    "name": "CI",
+    "node_id": "WR_edge002",
+    "head_branch": "main",
+    "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "path": ".github/workflows/ci.yml",
+    "display_title": "edge: null head_commit block",
+    "run_number": 2,
+    "run_attempt": 1,
+    "event": "schedule",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 7000002,
+    "check_suite_id": 9000002,
+    "check_suite_node_id": "CS_edge002",
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002",
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture/actions/runs/8000002",
+    "pull_requests": [],
+    "created_at": "2025-06-01T11:00:00Z",
+    "updated_at": "2025-06-01T11:05:00Z",
+    "run_started_at": "2025-06-01T11:00:05Z",
+    "jobs_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002/jobs",
+    "logs_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002/logs",
+    "check_suite_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/check-suites/9000002",
+    "artifacts_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002/artifacts",
+    "cancel_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002/cancel",
+    "rerun_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/runs/8000002/rerun",
+    "workflow_url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture/actions/workflows/7000002",
+    "head_commit": null,
+    "head_repository": {
+      "id": 123456789,
+      "node_id": "R_waitbus_demo",
+      "name": "waitbus-demo-fixture",
+      "full_name": "astrogilda/waitbus-demo-fixture",
+      "private": false,
+      "owner": {"login": "astrogilda", "id": 99000001}
+    },
+    "repository": {
+      "id": 123456789,
+      "node_id": "R_waitbus_demo",
+      "name": "waitbus-demo-fixture",
+      "full_name": "astrogilda/waitbus-demo-fixture",
+      "private": false,
+      "owner": {"login": "astrogilda", "id": 99000001}
+    },
+    "actor": {"login": "astrogilda", "id": 99000001},
+    "triggering_actor": {"login": "astrogilda", "id": 99000001},
+    "previous_attempt_url": null
+  },
+  "repository": {
+    "id": 123456789,
+    "node_id": "R_waitbus_demo",
+    "name": "waitbus-demo-fixture",
+    "full_name": "astrogilda/waitbus-demo-fixture",
+    "private": false,
+    "owner": {
+      "login": "astrogilda",
+      "id": 99000001,
+      "type": "User"
+    },
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture",
+    "description": "fixture repo for waitbus test corpus",
+    "fork": false,
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture",
+    "default_branch": "main"
+  },
+  "organization": null,
+  "sender": {
+    "login": "astrogilda",
+    "id": 99000001,
+    "type": "User"
+  },
+  "installation": null
+}

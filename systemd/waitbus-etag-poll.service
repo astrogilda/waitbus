@@ -1,0 +1,36 @@
+[Unit]
+Description=waitbus ETag poll oneshot
+Documentation=https://github.com/astrogilda/waitbus/blob/main/SKILL.md
+After=default.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/waitbus etag-poll run
+StateDirectory=waitbus
+StateDirectoryMode=0700
+WorkingDirectory=%S/waitbus
+Nice=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening (systemd >= 246).
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%S/waitbus
+NoNewPrivileges=true
+MemoryDenyWriteExecute=true
+LimitNOFILE=1024
+UMask=0077
+Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8
+# ProtectKernelTunables=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectKernelModules=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+# ProtectControlGroups=true  # disabled: requires CAP_SETPCAP unavailable in user-systemd
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+# Network egress required (HTTPS to api.github.com) — include @network
+# allowlist alongside @system-service.
+SystemCallFilter=@system-service @network-io
+SystemCallFilter=~@privileged @resources

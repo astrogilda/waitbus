@@ -1,0 +1,42 @@
+{
+  "derived_at_iso": "2026-05-20T05:02:53+00:00",
+  "tiktoken_encoder": "cl100k_base",
+  "per_source": {
+    "github": {
+      "small_poll_text_sha256": "e81476524348e4f710064a3d7f0d933989f21ba66c5dae7abe9f424cd2ab5799",
+      "small_poll_tokens": 45,
+      "terminal_poll_text_sha256": "2777b97f71c3f882d1e06541bbf02aa507b235e999931ed11c9635562075d18c",
+      "terminal_poll_tokens": 977,
+      "assumed_session": "300 small polls + 1 terminal poll (15-min CI run at 3-second poll interval)",
+      "derived_default_tokens": 48,
+      "rationale": "300 * 45 (small) + 1 * 977 (terminal) / 301 polls = 48.1 -> 48 tokens"
+    },
+    "pytest": {
+      "small_poll_text_sha256": "70542ac70f02f3a5f750e93922127340a98e8bfc06c728ea9295986ce73c2fd4",
+      "small_poll_tokens": 10,
+      "terminal_poll_text_sha256": "ce8ceb8a82c9b390da663ede91ad486fd611b6ea2183c2e404798d72b2a4de81",
+      "terminal_poll_tokens": 419,
+      "assumed_session": "20 small polls + 1 terminal poll (100-second test suite polled every 5 seconds)",
+      "derived_default_tokens": 29,
+      "rationale": "20 * 10 (small) + 1 * 419 (terminal) / 21 polls = 29.5 -> 29 tokens"
+    },
+    "docker": {
+      "small_poll_text_sha256": "c6619b8d9781df8c64d0c604ff93f6b611aab7a6a0236e0a8d8a654800bb0de5",
+      "small_poll_tokens": 53,
+      "terminal_poll_text_sha256": "0b7c5a3d2fa1883fbf53fd945aff268c2a66bf05ee2de6543c5ebdddf0261fca",
+      "terminal_poll_tokens": 58,
+      "assumed_session": "60 small polls + 1 terminal poll (5-minute container job polled every 5 seconds)",
+      "derived_default_tokens": 53,
+      "rationale": "60 * 53 (small) + 1 * 58 (terminal) / 61 polls = 53.1 -> 53 tokens"
+    },
+    "fs": {
+      "small_poll_text_sha256": "f69376a5848c0da18d20d378982ea68ab31e7404491a087439b4ea0617a75136",
+      "small_poll_tokens": 21,
+      "terminal_poll_text_sha256": "38ce8185b276fc13d76f3f469ad92658ad707cec5390b4d88b0f9bcc14537ee8",
+      "terminal_poll_tokens": 23,
+      "assumed_session": "15 small polls + 1 terminal poll (15-second file operation polled every second)",
+      "derived_default_tokens": 21,
+      "rationale": "15 * 21 (small) + 1 * 23 (terminal) / 16 polls = 21.1 -> 21 tokens"
+    }
+  }
+}

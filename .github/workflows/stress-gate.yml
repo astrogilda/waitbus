@@ -1,0 +1,137 @@
+name: stress-gate
+
+# Two-tier stress gate for the `waitbus stress` subcommand.
+#
+# Per-push:   single-N (offline-deterministic) `waitbus stress` invocation.
+#             Catches obvious regressions in the curve / silent-slow-consumer /
+#             zero-poll signals without paying the full sweep wall-clock.
+#
+# Per-tag:    full curve sweep + USL fit. Anchors the release-cycle gate;
+#             the published verdict is the comparison target for the next
+#             release's regression-tolerance check.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "waitbus/**"
+      - "scripts/stress/**"
+      - "tests/test_stress_*"
+      - "tests/test_zero_polling.py"
+  pull_request:
+    paths:
+      - "waitbus/**"
+      - "scripts/stress/**"
+      - "tests/test_stress_*"
+      - "tests/test_zero_polling.py"
+  release:
+    types: [published]
+
+jobs:
+  per-push:
+    if: github.event_name != 'release'
+    name: waitbus stress (per-push, single-N)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Install waitbus[stress]
+        run: uv sync --extra stress
+
+      - name: Pre-flight scipy import
+        run: uv run python -c "import scipy; print('scipy', scipy.__version__)"
+
+      - name: Run waitbus stress (single-N, 5 s window)
+        run: |
+          uv run waitbus stress \
+            --sweep "1" \
+            --duration "5s" \
+            --signals "curve" \
+            --output "${{ github.workspace }}/stress-verdict.json" \
+            --progress "${{ github.workspace }}/stress-progress.jsonl"
+
+      - name: Upload verdict + progress
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stress-verdict-per-push
+          path: |
+            stress-verdict.json
+            stress-progress.jsonl
+
+  per-tag:
+    if: github.event_name == 'release'
+    name: waitbus stress (per-tag, full sweep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Install waitbus[stress]
+        run: uv sync --extra stress
+
+      - name: Run waitbus stress (full sweep, 60 s per N)
+        run: |
+          uv run waitbus stress \
+            --sweep "1,2,4,8,16,32,64" \
+            --duration "60s" \
+            --signals "curve,zero_poll" \
+            --output "${{ github.workspace }}/stress-verdict.json" \
+            --progress "${{ github.workspace }}/stress-progress.jsonl"
+
+      - name: Upload verdict + progress
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stress-verdict-${{ github.event.release.tag_name }}
+          path: |
+            stress-verdict.json
+            stress-progress.jsonl
+
+  waitbus-stress-real:
+    if: github.event_name == 'release'
+    name: waitbus stress (per-tag, real heterogeneous drivers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Install waitbus[stress]
+        run: uv sync --extra stress
+
+      - name: Install claude + gemini CLIs
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          npm install -g @google/gemini-cli
+
+      - name: Run waitbus stress --real (5,10 sweep, 60 s per N)
+        run: |
+          uv run waitbus stress \
+            --real \
+            --sweep "5,10" \
+            --duration "60s" \
+            --output "${{ github.workspace }}/stress-real-verdict.json" \
+            --progress "${{ github.workspace }}/stress-real-progress.jsonl"
+
+      - name: Upload real verdict + progress
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stress-real-verdict-${{ github.event.release.tag_name }}
+          path: |
+            stress-real-verdict.json
+            stress-real-progress.jsonl
