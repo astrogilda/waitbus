@@ -1,0 +1,6 @@
+# CODEOWNERS for waitbus
+# Release-flow changes require explicit review
+/.github/workflows/release.yml  @astrogilda
+
+# Migration arbitrary-Python execution surface
+waitbus/migrations/*.py    @astrogilda

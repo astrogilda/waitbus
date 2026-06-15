@@ -1,0 +1,662 @@
+[build-system]
+requires = ["hatchling==1.30.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "waitbus"
+version = "0.1.0"
+description = "Workstation-local event bus and blocking wait/emit primitive: let any agent or script wait on or emit CI, pytest, Docker, and filesystem events without polling. GitHub Actions is source #1."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sankalp Gilda", email = "sankalp.gilda@gmail.com" }]
+keywords = ["github-actions", "ci", "webhook", "claude-code", "mcp", "broadcast", "sqlite"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: System :: Monitoring",
+]
+# typer drives the `waitbus` umbrella CLI. Seven transitive
+# packages (click, rich, markdown-it-py, mdurl, shellingham,
+# annotated-doc, pygments). Pin <1.0 — typer is still pre-1.0 and
+# SemVer-breaking changes are possible across 0.x.
+#
+# platformdirs resolves the per-user state and runtime directories
+# (XDG-aware on Linux, Apple-conventional on macOS). Pinned <5.0 to
+# bound any future major-version surface change.
+#
+# pydantic-settings drives the unified CiStatusConfig loader with env-
+# var overrides. pydantic stays in the runtime closure as a transitive
+# dep of pydantic-settings even though waitbus.mcp no longer uses
+# pydantic models directly.
+dependencies = [
+  # Upper bound holds at <1.28 until the SDK ships a release containing
+  # the `subscribe` capability-derivation fix on `main` (commit fa9c59b
+  # / refactor 0a22a9d). When that release lands on PyPI, bump this pin
+  # (e.g. `mcp>=1.28,<2.0`) and delete the CiStatusServer subclass in
+  # waitbus/mcp.py (see the docstring there for removal criteria).
+  "mcp>=1.27.1,<1.28",
+  "msgspec>=0.19,<1.0",
+  "platformdirs>=4.9,<5.0",
+  "prometheus_client>=0.20,<1.0",
+  "pydantic-settings>=2.6,<3.0",
+  "stamina>=26.1.0",
+  "typer>=0.15,<1.0",
+]
+
+# Consumer-facing optional features. NOT dev tooling — dev tools live
+# in [dependency-groups].dev so `pip install waitbus[...]` can never pull
+# them. `analyze` enables `waitbus events analyze` (DuckDB sqlite_scanner
+# over the events store); duckdb is imported lazily so the base install
+# stays stdlib-plus-sqlite3. `fs` enables `waitbus source fs` (the
+# filesystem watcher): watchdog is the battle-tested cross-platform
+# inotify/kqueue/FSEvents abstraction — hand-rolling it is the
+# anti-pattern — and is imported lazily so the base install is
+# unaffected by it just as it is by duckdb.
+[project.optional-dependencies]
+analyze = ["duckdb>=1.1,<2.0"]
+fs = ["watchdog>=4.0,<7.0"]
+# `stress` enables `waitbus stress`, the user-facing concurrency-knee
+# probe + slow-consumer + zero-polling diagnostic. scipy is the
+# canonical numerical-Python dep for the Universal Scalability Law
+# fit (nonlinear regression via scipy.optimize.curve_fit). scipy is
+# imported lazily so the base install stays stdlib + a tiny set of
+# pinned deps; users who only need `waitbus wait` / `waitbus on` /
+# `waitbus broadcast serve` never see it.
+stress = ["scipy>=1.15,<2.0"]
+# `bench` carries the dependencies for the benchmarks/ suite. NOT
+# shipped in the sdist (the sdist only-include list below excludes
+# benchmarks/); this extra exists so `pip install waitbus[bench]` is the
+# canonical way to set a contributor environment up for running
+# benches. The benches themselves live in the benchmarks/ directory
+# and are not part of the consumer surface.
+#
+# Bench-only scope (NEVER added to the consumer-facing
+# [project.dependencies] block above): the OpenAI / langchain-openai /
+# langchain-core / langgraph closure is here so the heterogeneous-
+# swarm bench can drive real model calls without leaking that closure
+# into a `pip install waitbus` consumer install. tiktoken backs both the
+# poll-cost derivation script and the bench's uniform-tokeniser
+# comparison column. HdrHistogram is the percentile recorder.
+bench = [
+  "hdrhistogram>=0.10,<1.0",
+  "tiktoken>=0.7,<1.0",
+  "openai>=2.0,<3.0",
+  "langchain-openai>=1.0,<2.0",
+  "langchain-core>=1.4,<2.0",
+  # packaging backs the canonical-versions gate in
+  # benchmarks/_bench_preflight.py (PEP 440 SpecifierSet / Version band
+  # check). It is otherwise a transitive dep of the toolchain, but the
+  # bench imports it directly, so it is declared here explicitly.
+  "packaging>=24.0",
+  # scipy backs the Mann-Whitney U marginal test in the heterogeneous-
+  # swarm bench (`benchmarks/bench_polling_vs_subscribe_llm_agent.py`).
+  # Same band as the `stress` extra so a contributor with both extras
+  # installed gets one resolved scipy.
+  "scipy>=1.15,<2.0",
+]
+# `plugin-verify` enables in-process PEP 740 attestation verification
+# for third-party source plugins discovered via the `waitbus.sources.v1`
+# entry-point group. waitbus uses `pypi_attestations.Attestation.verify`
+# in-process (no subprocess); skipping this extra leaves the registry
+# functional but plugin loads happen without cryptographic publisher
+# binding, and the operator must manually vet every plugin wheel.
+#
+# Pinned tight because pypi-attestations ships breaking changes at
+# every 0.0.X patch while the upstream contract is still stabilising
+# (0.0.27 changed wheel-filename comparison; 0.0.28 forced sigstore
+# Rekor v1; 0.0.29 raised the Python floor + added Google publisher
+# kind; 0.0.30 added the CircleCI publisher kind waitbus's identity
+# formatter references). The 0.0.30 wheel does not advertise support
+# for Python >=3.15 yet, so we accept 0.0.29 as the floor; when
+# 0.0.30 is unavailable for the resolver's Python version, waitbus
+# falls back to 0.0.29 and the CircleCI identity branch fails loud
+# via AttestationVerificationError (rather than silently mis-binding
+# a CircleCI publisher to a wrong allowlist entry). Bumping this
+# ceiling requires a deliberate DEC entry verifying the new release's
+# Provenance / AttestationBundle / Publisher shapes against the
+# waitbus verify path.
+plugin-verify = ["pypi-attestations>=0.0.29,<0.0.31"]
+# `soak` carries the dependencies for the soak-harness subscriber
+# thread (HdrHistogram for in-process p99 capture). Kept separate
+# from `bench` because soak runs are operator-launched pre-release
+# qualification (see scripts/run_soak_on_hetzner.sh); a consumer
+# installing waitbus for runtime should not be forced to pull the
+# benchmark dependency closure to do so. The `hdrhistogram` PyPI
+# package installs the `hdrh` module that benchmarks/_harness.py
+# imports lazily.
+soak = ["hdrhistogram>=0.10,<1.0"]
+
+[project.urls]
+Homepage = "https://github.com/astrogilda/waitbus"
+Documentation = "https://github.com/astrogilda/waitbus#readme"
+Repository = "https://github.com/astrogilda/waitbus"
+Issues = "https://github.com/astrogilda/waitbus/issues"
+Changelog = "https://github.com/astrogilda/waitbus/blob/main/CHANGELOG.md"
+
+# `waitbus` is the single operator-facing CLI (typer-based) dispatching
+# to all sub-commands. Daemon entry-points are reached via sub-command
+# verbs (e.g. `waitbus listener serve`, `waitbus mcp serve`).
+[project.scripts]
+waitbus = "waitbus.cli:main"
+
+# Public extension API: third-party Python packages register custom
+# event sources by declaring entries under the `waitbus.sources.v1`
+# group. waitbus enumerates the group at daemon startup via
+# `importlib.metadata.entry_points(group="waitbus.sources.v1")`. The
+# `.v1` suffix is the contract version; when waitbus introduces a
+# breaking SourceSpec change the group will become `waitbus.sources.v2`
+# (waitbus will enumerate both groups during the transition). waitbus
+# itself ships NO
+# entries under this group — built-in sources (github, alertmanager,
+# pytest, docker, fs) register through a separate code path in
+# `waitbus/sources/_registry.py` BEFORE the entry-point walk so
+# typosquat shadowing is structurally impossible. Operator-facing
+# how-to + reference plugin + sysexits-aligned exit-code reference
+# for the verify-style CLI verbs all live in `docs/CUSTOM_SOURCES.md`.
+[project.entry-points."waitbus.sources.v1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["waitbus"]
+# NOTE: schema.sql and migrations/*.sql ship as package data under `waitbus/`
+# via the package inclusion above. A previous `force-include` of those same
+# paths was redundant and double-added them to the wheel; hatchling >=1.30
+# rejects the duplicate path, so the redundant force-include was removed.
+
+# Ship the eight systemd-user units AND four launchd LaunchAgent
+# plists as wheel shared-data. For `pip install --user` they land at
+# ~/.local/share/{systemd/user,launchd}/ which is valid for systemd
+# (operators can `systemctl --user daemon-reload` immediately) but is
+# NOT a launchd load path on macOS. For `uv tool install` and `pipx
+# install` neither path is loadable. The `waitbus install-systemd`
+# (Linux) and `waitbus install-launchd` (macOS) console-scripts
+# detect the install location via sysconfig.get_path('data') and copy
+# into ~/.config/systemd/user/ or ~/Library/LaunchAgents/ respectively.
+#
+# Both sides ship a MANIFEST.txt so `--sync` can compute set-difference
+# against the operator's installed units / plists and offer to remove
+# orphans on package downgrade.
+[tool.hatch.build.targets.wheel.shared-data]
+"systemd/waitbus-listener.service"             = "share/systemd/user/waitbus-listener.service"
+"systemd/waitbus-broadcast.socket"             = "share/systemd/user/waitbus-broadcast.socket"
+"systemd/waitbus-broadcast.service"            = "share/systemd/user/waitbus-broadcast.service"
+"systemd/waitbus-etag-poll.service"            = "share/systemd/user/waitbus-etag-poll.service"
+"systemd/waitbus-etag-poll.timer"              = "share/systemd/user/waitbus-etag-poll.timer"
+"systemd/waitbus-watchdog.service"             = "share/systemd/user/waitbus-watchdog.service"
+"systemd/waitbus-watchdog.timer"               = "share/systemd/user/waitbus-watchdog.timer"
+"systemd/waitbus-forward@.service"             = "share/systemd/user/waitbus-forward@.service"
+"systemd/MANIFEST.txt"                       = "share/systemd/user/waitbus.MANIFEST.txt"
+"installers/launchd/dev.waitbus.listener.plist"  = "share/launchd/dev.waitbus.listener.plist"
+"installers/launchd/dev.waitbus.broadcast.plist" = "share/launchd/dev.waitbus.broadcast.plist"
+"installers/launchd/dev.waitbus.etag-poll.plist" = "share/launchd/dev.waitbus.etag-poll.plist"
+"installers/launchd/dev.waitbus.watchdog.plist"  = "share/launchd/dev.waitbus.watchdog.plist"
+"installers/launchd/MANIFEST.txt"              = "share/launchd/MANIFEST.txt"
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "waitbus",
+  "systemd",
+  "installers",
+  "tests",
+  "SKILL.md",
+  "README.md",
+  ".github/CONTRIBUTING.md",
+  "SECURITY.md",
+  "CHANGELOG.md",
+  "LICENSE",
+  "NOTICE",
+]
+exclude = [
+  "**/.venv/",
+  "**/__pycache__/",
+  "**/.mypy_cache/",
+  "**/.pytest_cache/",
+  "**/.ruff_cache/",
+  "**/.hypothesis/",
+  "**/.DS_Store",
+  "**/*.pyc",
+  "uv.lock",
+  # Tests that import a maintainer-only top-level package (``scripts``
+  # or ``benchmarks``) at module scope.  Pair-excluded with those trees
+  # (both omitted from the ``only-include`` list above).  Without this pair,
+  # ``pytest --collect-only`` on an unpacked sdist fails at collection
+  # time with ``ModuleNotFoundError`` against the missing import.
+  #
+  # Source-of-truth: this list MUST equal the AST-computed set returned
+  # by ``scripts/sdist_test_pairing.py`` (walk every ``tests/*.py``,
+  # collect module-scope imports whose root is ``scripts`` or
+  # ``benchmarks``).  The pairing is enforced two ways: the 4th
+  # invariant in ``tests/test_pyproject_invariants.py`` and the
+  # ``sdist-test-pairing`` pre-commit hook in ``.pre-commit-config.yaml``.
+  # Keep ``[tool.check-manifest].ignore`` below in lockstep with this
+  # block (the invariant asserts both equal the AST set and each other).
+  "tests/test_bench_anchor.py",
+  "tests/test_bench_ci_producer_swarm.py",
+  "tests/test_bench_daemon_per_delivery_cost.py",
+  "tests/test_bench_event_delivery_fidelity.py",
+  "tests/test_bench_llm_agent_pool.py",
+  "tests/test_bench_multistream_proof.py",
+  "tests/test_bench_pilot_skip_contract.py",
+  "tests/test_bench_polling_vs_subscribe_llm_agent.py",
+  "tests/test_bench_preflight.py",
+  "tests/test_bench_shared.py",
+  "tests/test_bench_source_mix.py",
+  "tests/test_bench_swarm.py",
+  "tests/test_cli_stress.py",
+  "tests/test_corpus_property.py",
+  "tests/test_coverage_per_file_script.py",
+  "tests/test_daemon_teardown.py",
+  "tests/test_derive_classify_branch.py",
+  "tests/test_derive_validators.py",
+  "tests/test_drain_smoke.py",
+  "tests/test_fault_injection.py",
+  "tests/test_pyproject_invariants.py",
+  "tests/test_soak_close_reasons.py",
+  "tests/test_soak_isolation.py",
+  "tests/test_soak_monitor.py",
+  "tests/test_source_taxonomy_consistency.py",
+  "tests/test_stress_real_drivers.py",
+  "tests/test_stress_real_drivers_e2e.py",
+  "tests/test_stress_scaffold.py",
+  "tests/test_stress_sources_ledger_scrape.py",
+  "tests/test_stress_usl_and_cli.py",
+  "tests/test_zero_polling.py",
+]
+
+[tool.check-manifest]
+# The sdist uses ``only-include`` (see ``[tool.hatch.build.targets.sdist]``
+# above) so the project ships a small explicit set of paths -- everything
+# else in git is intentionally out-of-sdist (docs/, benchmarks/, examples/,
+# top-level operator-facing docs like SESSION_HANDOFF.md / TODO.md /
+# PROJECT_CONTEXT.md / ROADMAP.md / CODE_OF_CONDUCT.md, CI config under
+# .github/, the Claude Code plugin manifest under .claude-plugin/, the
+# editor + nix + Prometheus + Homebrew + flake auxiliary trees, etc.).
+# Without this ``ignore`` list ``check-manifest`` reports every such file
+# as drift; with it, the hook reports ONLY drift among the explicitly-
+# shipped paths (which is the same gate ``tests/test_sdist_manifest.py``
+# enforces via its committed snapshot). Keep this list in sync with
+# whatever git adds at the repo root that is not part of ``only-include``
+# above.
+ignore = [
+  # Citation metadata read from the repo by GitHub / Zenodo; kept out of the
+  # minimal sdist, consistent with the other root-level meta files below.
+  "CITATION.cff",
+  # Top-level operator-facing docs (deliberately out-of-sdist).
+  "CODE_OF_CONDUCT.md",
+  "PROJECT_CONTEXT.md",
+  "ROADMAP.md",
+  "SESSION_HANDOFF.md",
+  "SUPPORT.md",
+  "TODO.md",
+  # Top-level project-internal config that is not a runtime asset.
+  ".orphan-allowlist",
+  ".pre-commit-config.yaml",
+  ".mcp.json",
+  ".editorconfig",
+  ".gitattributes",
+  ".lycheeignore",
+  "flake.nix",
+  "flake.lock",
+  "server.json",
+  "pyrightconfig.json",
+  # Out-of-sdist top-level trees.
+  ".claude-plugin/**",
+  ".github/**",
+  ".vscode/**",
+  # adapters/ holds self-published sibling packages (each with its own
+  # pyproject.toml and lockfile); they are released independently and
+  # never ship inside the waitbus sdist or wheel. See adapters/README.md.
+  "adapters/**",
+  "benchmarks/**",
+  "docs/**",
+  "examples/**",
+  "monitoring/**",
+  "packaging/**",
+  # scripts/ holds maintainer-only Python tools (soak orchestrator,
+  # derive_gh_distributions, sensitivity_sweep, dogfood emit, sync-
+  # versions, etc.). None are consumer-callable from a pip-installed
+  # waitbus; every documented invocation runs from a source checkout
+  # (run_soak_on_hetzner.sh git-archives HEAD; dogfood-wait.yml uses
+  # actions/checkout; pre-commit hooks call them by relative path).
+  "scripts/**",
+  # Tests that import a maintainer-only top-level package (``scripts``
+  # or ``benchmarks``) at module scope; pair-excluded so the sdist test
+  # surface stays internally consistent.  MUST stay in lockstep with the
+  # ``[tool.hatch.build.targets.sdist].exclude`` block above — both equal
+  # the AST-computed set from ``scripts/sdist_test_pairing.py`` and the
+  # invariant in ``tests/test_pyproject_invariants.py`` asserts it.
+  "tests/test_bench_anchor.py",
+  "tests/test_bench_ci_producer_swarm.py",
+  "tests/test_bench_daemon_per_delivery_cost.py",
+  "tests/test_bench_event_delivery_fidelity.py",
+  "tests/test_bench_llm_agent_pool.py",
+  "tests/test_bench_multistream_proof.py",
+  "tests/test_bench_pilot_skip_contract.py",
+  "tests/test_bench_polling_vs_subscribe_llm_agent.py",
+  "tests/test_bench_preflight.py",
+  "tests/test_bench_shared.py",
+  "tests/test_bench_source_mix.py",
+  "tests/test_bench_swarm.py",
+  "tests/test_cli_stress.py",
+  "tests/test_corpus_property.py",
+  "tests/test_coverage_per_file_script.py",
+  "tests/test_daemon_teardown.py",
+  "tests/test_derive_classify_branch.py",
+  "tests/test_derive_validators.py",
+  "tests/test_drain_smoke.py",
+  "tests/test_fault_injection.py",
+  "tests/test_pyproject_invariants.py",
+  "tests/test_soak_close_reasons.py",
+  "tests/test_soak_isolation.py",
+  "tests/test_soak_monitor.py",
+  "tests/test_source_taxonomy_consistency.py",
+  "tests/test_stress_real_drivers.py",
+  "tests/test_stress_real_drivers_e2e.py",
+  "tests/test_stress_scaffold.py",
+  "tests/test_stress_sources_ledger_scrape.py",
+  "tests/test_stress_usl_and_cli.py",
+  "tests/test_zero_polling.py",
+  # Build artifacts / local caches that may appear in a developer's
+  # working tree.
+  "coverage.json",
+  "dist/**",
+  # ``uv.lock`` is in the sdist ``exclude`` list above (uv-managed lockfile,
+  # rebuilt locally; not a published runtime asset).
+  "uv.lock",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Add the repo root to sys.path so tests can import shared helpers from
+# ``scripts/`` without per-file sys.path mutation. ``scripts/``
+# carries an ``__init__.py`` and is intentionally NOT an installed package
+# (it lives only in the source tree); pythonpath here is the canonical way
+# to expose it to pytest collection.
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+# Escalate ResourceWarning to error so any future leaked sqlite3.Connection,
+# socket, or file handle in the test suite fails loud instead of accumulating
+# silently under hypothesis's example-rerun loops. Verified clean across the
+# full hypothesis-using test set at v0.3 cycle open.
+filterwarnings = [
+  "error::ResourceWarning",
+  # Strict-unraisable gate. ``error::ResourceWarning`` only fires when
+  # the leak's ``__del__`` runs inside the owning test; under Python
+  # 3.14 most leaks surface via the unraisable-exception hook in a
+  # later test. This second rule catches that cross-test class so
+  # transports / sqlite handles / urllib tempfiles / anyio streams
+  # that survive their owning test fail loud at GC time. Stable
+  # because (a) every async fixture now triggers an explicit stop
+  # signal rather than relying on cancellation, and (b) ``conftest.py``
+  # forces ``gc.collect()`` between tests so attribution is
+  # deterministic. See ``docs/audits/2026-05-14-leak-hunt/REPORT.md``
+  # for the full root-cause inventory.
+  "error::pytest.PytestUnraisableExceptionWarning",
+]
+markers = [
+  "serial: tests that mutate shared OS state and must run serially",
+  "slow: integration tests that take 30-60 s (wheel build, fresh venv)",
+  "watch_delta: characterization tests pinning the documented read_events.watch behaviour deltas (token path + unified BookmarkCursor); rewritten at convergence",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+# Illustrative code snippets for the launch articles are intentionally-incomplete
+# display fragments (bare `self`, undefined names by design); they are rendered to
+# images, not executed, so they are exempt from lint and format.
+extend-exclude = ["docs/launch-articles/assets/code/src"]
+
+[tool.ruff.lint]
+# ISC catches the implicit-string-concatenation class — specifically ISC001
+# which fires when two adjacent string literals would silently concatenate
+# (e.g. r"...."  r"...." on one line after a format-pass collapse). Without
+# this rule the formatter can collapse a deliberately two-line regex into
+# a visually noisy one-liner with `" r"` adjacency that reads like an
+# unfinished refactor. ISC permanently closes that recurrence path.
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ISC"]
+# Codify the annotations policy: every .py file uses
+# ``from __future__ import annotations``. PEP 563 string annotations
+# are forward-compatible with PEP 649/749 deferred evaluation (default
+# in Python 3.14+), enable ``if TYPE_CHECKING:`` import cycles in the
+# sources/_protocol.py contract surface, and work transparently with
+# msgspec.Struct's class-creation get_type_hints lookup. FA102 enforces
+# the policy: every .py file uses ``from __future__ import annotations``.
+extend-select = ["FA102"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests group property-based imports near their fixture sections rather
+# than the file head; the locality aids readability of large test files.
+"tests/*" = ["E402"]
+# scripts/sync-versions.py is a CLI script invoked by name, not an
+# importable module; the hyphen in the filename is intentional. N999
+# (invalid module name) flags hyphens unconditionally, which is the
+# right default for library modules but not for CLI entries.
+"scripts/sync-versions.py" = ["N999"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["waitbus", "tests", "scripts", "benchmarks"]
+# tests/ has no __init__.py by convention (shared helpers import bare or as
+# tests.X); without this the configured `uv run mypy` aborts with
+# "Source file found twice under different module names" on a qualified-imported
+# helper (tests/_wire_helpers.py, tests/_daemon_helpers.py) and silently does NOT
+# type-check. explicit_package_bases makes the canonical invocation actually run.
+explicit_package_bases = true
+
+[tool.coverage.run]
+source = ["waitbus"]
+branch = true
+parallel = false
+# _version.py: one line of importlib.metadata delegation; the
+# PackageNotFoundError branch carries `pragma: no cover` in the source.
+# No additional omit entry needed — the covered line will pass at any
+# reasonable threshold and the uncovered branch is already annotated.
+omit = []
+
+[tool.coverage.report]
+precision = 1
+show_missing = true
+fail_under = 80
+skip_empty = true
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+  "if __name__ == \"__main__\":",
+]
+
+[tool.interrogate]
+# Docstring-coverage gate. The 80% per-file bar reflects the project's
+# coverage policy and docstring
+# discipline (substantive docstrings on public surfaces; private
+# helpers documented when their contract isn't fully captured by the
+# enclosing symbol).
+#
+# `ignore-nested-functions = true` is load-bearing: nested closures
+# in this codebase (e.g. `coalesce._accumulate`, `wait._wait._decide`)
+# derive their contract from the enclosing function's docstring and
+# from the engine signature they bind to (`await_predicate`'s `decide`
+# callback). Documenting them inline would either duplicate the parent
+# scope's contract or invent a synthetic class to hold two attributes
+# — both worse than the closure shape. Without this flag, the prior
+# finding (75% per-file on coalesce.py because of the
+# undocumented `_accumulate` closure) would re-occur on every future
+# natural `_decide` callback.
+#
+# Top-level functions and class methods are still counted at the 80%
+# bar; closures are excluded to preserve the natural shape.
+fail-under = 80
+ignore-nested-functions = true
+ignore-init-method = true
+ignore-magic = true
+ignore-private = false
+ignore-property-decorators = false
+exclude = ["build", "dist", "docs", "tests"]
+verbose = 1
+quiet = false
+color = true
+
+[dependency-groups]
+# PEP 735 dependency-groups (NOT installed by `pip install .[dev]` —
+# group installs require `uv sync --group dev` or `pip install
+# --group dev`). Dev tools live here rather than in
+# [project.optional-dependencies] so they never leak into a consumer
+# install via `pip install waitbus[dev]` — operators only get the
+# runtime closure.
+dev = [
+  "build>=1.2",
+  "check-manifest>=0.51",
+  "freezegun>=1.5.5",
+  "hypothesis>=6.152.6",
+  "mypy>=2.1.0",
+  # prek is the canonical Rust-based git-hook manager (drop-in
+  # alternative to the pre-commit framework). Operators and CI
+  # invoke it via `uvx prek install -f` / `uvx prek run --all-files`;
+  # no Python dependency is required in the dev group itself.
+  # pooch backs scripts/derive_gh_distributions.py (Zenodo
+  # fetch-cache-verify for the workflow-histories + GHALogs datasets
+  # the Hawkes-process corpus parameters derive from). MD5
+  # verification against Zenodo record metadata replaces the prior
+  # bespoke size-only cache validation. Maintainer-only path; not a
+  # runtime dep.
+  "pooch>=1.9",
+  "pytest>=8.0",
+  # 1.4.0 floor: 1.3.0's _temporary_event_loop_policy probes
+  # asyncio.get_event_loop(), which on Python 3.13 lazily creates an
+  # event loop (+ its self-pipe socketpair) when none is current and
+  # never closes it. The orphaned loop trips the conftest gc gate as a
+  # gc-misattributed "unclosed event loop" ResourceWarning. Fixed in 1.4.0.
+  "pytest-asyncio>=1.4.0",
+  "pytest-cov>=7.1.0",
+  # pytest-randomly shuffles test order each run to catch order-dependent
+  # fixtures and shared-state leaks at test-write time.  Particularly
+  # load-bearing for tests that touch process-global state (env vars,
+  # lru_cache, signal handlers) such as the config-construction smoke
+  # test in tests/test_config_construction.py which would otherwise
+  # silently pass under whatever env-var residue prior tests leak.
+  "pytest-randomly>=3.15",
+  "pytest-xdist>=3.5",
+  "ruff>=0.15,<1.0",
+  # tiktoken backs scripts/derive_poll_costs.py (used by the
+  # `derive-poll-costs-against` pre-commit hook to validate the
+  # DEFAULT_POLL_COST_* constants in waitbus/stats.py against
+  # the empirical derivation in benchmarks/poll_cost_derivation.json).
+  # The same dep lives in the [bench] extra for benchmark runs.
+  "tiktoken>=0.7,<1.0",
+  # radon backs the complexity-ratchet hook + tests/test_complexity_table.py;
+  # vulture backs the dead-code-lint hook. Both are language=system local hooks
+  # invoked via "uv run <tool>", so uv sync must install them (CI uses
+  # --all-groups). Previously undeclared, which failed the hooks in CI.
+  "radon>=6.0",
+  "vulture>=2.14",
+]
+# Real agent-framework integrations exist ONLY to prove the "any agent"
+# subscriber claim via executable canary tests + recorded demos. They are a
+# separate PEP 735 group (NOT in [project.optional-dependencies], NEVER in the
+# wheel / `pip install waitbus`) so the shipped artefact's lean, zero-cloud
+# closure is untouched and the everyday `uv sync --group dev` loop stays light.
+# The integration tests guard every import with pytest.importorskip + the
+# `slow` marker, so they skip cleanly when this group is not synced. We pull
+# `pydantic-ai-slim` (the core, NOT the `pydantic-ai` meta-package that drags
+# every provider SDK) and `langgraph` standalone (NOT the full `langchain`
+# meta-package); both ship PUBLIC deterministic fake models
+# (pydantic_ai.models.test.TestModel; langchain_core...FakeListChatModel) so the
+# tests run fully offline with no LLM network calls. langchain-core is pinned
+# explicitly for the fake-chat-model import even though langgraph pulls it.
+agent-recipes = [
+  "pydantic-ai-slim>=1.104,<2",
+  "langgraph>=1.2,<2",
+  "langchain-core>=1.4,<2",
+]
+# Real-LLM provider SDKs needed when bench_multistream_proof / bench_polling_vs_subscribe_llm_agent
+# run with --include-real-llm. The base agent-recipes group above ships only the
+# deterministic fake-model paths (TestModel / FakeListChatModel); to dispatch
+# against a real OpenAI endpoint, pydantic-ai-slim needs its [openai] extra
+# (pulls the `openai` SDK + tokenizer) and the langgraph LangChain adapter
+# needs langchain-openai (the official LangChain OpenAI ChatModel package).
+# Kept in a SEPARATE PEP 735 group so the offline closure of agent-recipes
+# stays intact for default `uv sync --group dev` flows; the Hetzner bench
+# wrapper uses `uv sync --all-groups` to pick this up explicitly. NEVER in
+# the wheel / `pip install waitbus`.
+agent-recipes-real = [
+  "pydantic-ai-slim[openai]>=1.104,<2",
+  "langchain-openai>=1.0,<2",
+]
+
+[[tool.mypy.overrides]]
+# These wildcard overrides silence missing-stubs errors from
+# packages that ship without py.typed.  Per-module tracking notes so a
+# future maintainer knows when to remove each override:
+#
+# * duckdb — duckdb/duckdb#9494 tracks the py.typed marker (still open
+#   as of duckdb 1.4); recheck on the duckdb 2.0 cut.
+# * hdrh (hdrhistogram PyPI package) — no upstream py.typed issue
+#   filed; the bench harness imports only `HdrHistogram` and uses its
+#   public method surface, so the lack of stubs is not a correctness
+#   risk for the consumer surface here.  Filing upstream is a
+#   maintainer follow-up when the bench extra grows beyond one class.
+# * pooch — fatiando/pooch has no open py.typed issue as of pooch 1.9;
+#   the maintainer-only `--derive` codepath in
+#   scripts/derive_gh_distributions.py is the only consumer.  Recheck
+#   when pooch publishes a 2.0 cut.
+# * scipy — scipy/scipy#22137 tracks scipy-stubs; revisit when
+#   scipy-stubs lands a stable release on PyPI.  Imported by
+#   scripts/stress/_usl.py (USL curve fit) and the bench's
+#   Mann-Whitney U marginal tests.
+# * watchdog — gorakhargosh/watchdog#947 tracks a py.typed proposal
+#   that has stalled since 2024; revisit on the next watchdog major.
+module = ["duckdb.*", "hdrh.*", "pooch.*", "scipy.*", "watchdog.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# tests/ has no __init__.py by convention -- conftest.py,
+# _subscriber_harness.py, and _webhook_redactor.py are bare modules
+# that pytest resolves at runtime via the [tool.pytest.ini_options]
+# pythonpath = ["."] setting. mypy --strict --explicit-package-bases
+# cannot reach them via the bare-import shape; the override treats
+# them as untyped externals so the strict wide-scope gate passes
+# without dropping the project's convention that tests/ stays
+# __init__.py-free (per PROJECT_CONTEXT.md "Shared test harness").
+# The helpers themselves are still type-checked when mypy walks
+# tests/ as a directory; only the consumer-side bare-import
+# annotation resolves to Any.
+module = ["conftest", "_subscriber_harness", "_webhook_redactor"]
+ignore_missing_imports = true
+
+[tool.vulture]
+# pydantic-settings v2 calls `settings_customise_sources` with KEYWORD
+# arguments (verified at upstream pydantic_settings/main.py:412).  The
+# four source-factory parameter names are part of the framework's call
+# contract; renaming them to underscore-prefixed forms to silence a
+# dead-arg lint would crash every config construction with TypeError on
+# the unexpected keyword.  This allowlist makes that contract explicit
+# so a future maintainer running vulture against the config module is
+# not tempted to mechanically rename the parameters.
+#
+# When a future pydantic-settings major adds a new source kind, the new
+# parameter name joins this list; do NOT rename to underscore-prefix
+# as a vulture-quieting shortcut.
+ignore_names = [
+  "settings_customise_sources",
+  "settings_cls",
+  "init_settings",
+  "env_settings",
+  "dotenv_settings",
+  "file_secret_settings",
+  # msgspec.Struct field defaults read via reflection; vulture cannot tell
+  # them from unused locals (false positives on wire-frame field defaults).
+  "max_frame_bytes",
+  "uptime_sec",
+]

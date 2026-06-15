@@ -1,0 +1,43 @@
+name: Set up waitbus environment
+description: >-
+  Install uv and Python, restore the uv venv cache, and sync the
+  project dependency closure. Shared by every CI job that needs an
+  importable waitbus environment so the toolchain setup lives in one
+  place.
+
+inputs:
+  python-version:
+    description: Python version to install.
+    required: false
+    default: "3.13"
+  sync-args:
+    description: Arguments passed to `uv sync`.
+    required: false
+    default: "--all-groups"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      # Pin uv: 0.11.x changed `uv run` to re-sync and prune the dev tools
+      # (pytest/coverage/vulture) out of the venv before spawning them, which
+      # broke CI with "error: Failed to spawn: coverage / pytest / vulture".
+      # 0.10.8 is the last version verified to keep the synced dev group.
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+      with:
+        version: "0.10.8"
+
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # No .venv cache: a restored venv carries console-script shebangs pinned to
+    # the cached Python patch path, so after a runner Python-patch bump every
+    # `uv run <tool>` dies with "Failed to spawn ... No such file or directory"
+    # (the interpreter the shebang points at is gone), and `uv sync` only
+    # adjusts packages, not the stale bin scripts. uv's package cache
+    # (UV_CACHE_DIR, set by setup-uv) keeps the fresh sync fast without it.
+    - name: Install dependencies
+      shell: bash
+      run: uv sync ${{ inputs.sync-args }}

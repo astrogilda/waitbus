@@ -1,0 +1,85 @@
+{
+  "bench_name": "ttfae_docker",
+  "waitbus_version": "0.5.0",
+  "started_at_ns": 1779244288638932436,
+  "ended_at_ns": 1779244299655598814,
+  "n_samples": 500,
+  "n_warmup_discarded": 50,
+  "rate_hz": 100.0,
+  "percentiles_gc_enabled": {
+    "p50": {
+      "value_ns": 4964351,
+      "ci_low_ns": 4947967,
+      "ci_high_ns": 4972543,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.4563412653024843,
+      "p_high_eff": 0.5436587346975157
+    },
+    "p90": {
+      "value_ns": 5554175,
+      "ci_low_ns": 5382143,
+      "ci_high_ns": 5611519,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8705780903680599,
+      "p_high_eff": 0.9233224372626984
+    },
+    "p99": {
+      "value_ns": 6017023,
+      "ci_low_ns": 5890047,
+      "ci_high_ns": 7131135,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9768069002442693,
+      "p_high_eff": 0.9957212461034096
+    }
+  },
+  "percentiles_gc_disabled": {
+    "p50": {
+      "value_ns": 5128191,
+      "ci_low_ns": 5107711,
+      "ci_high_ns": 5156863,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.4563412653024843,
+      "p_high_eff": 0.5436587346975157
+    },
+    "p90": {
+      "value_ns": 5681151,
+      "ci_low_ns": 5570559,
+      "ci_high_ns": 5746687,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8705780903680599,
+      "p_high_eff": 0.9233224372626984
+    },
+    "p99": {
+      "value_ns": 6180863,
+      "ci_low_ns": 6029311,
+      "ci_high_ns": 6377471,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9768069002442693,
+      "p_high_eff": 0.9957212461034096
+    }
+  },
+  "clamp_stats_gc_enabled": {
+    "low": 0,
+    "high": 0
+  },
+  "clamp_stats_gc_disabled": {
+    "low": 0,
+    "high": 0
+  },
+  "environment": {
+    "hostname": "waitbus-bench-20260519-232017-112373e",
+    "python_version": "3.12.3",
+    "platform": "Linux 6.8.0-117-generic",
+    "cpu_model": "AMD EPYC-Milan Processor",
+    "cpu_governor": null,
+    "aslr_disabled": true,
+    "taskset_mask": "2,3",
+    "waitbus_version": "0.5.0",
+    "warnings": []
+  },
+  "extra": {
+    "smoke": false,
+    "scope_note": "measures emit-to-recv for synthetic docker-shape events; excludes docker-watch engine-event-stream observation latency"
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

@@ -1,0 +1,30 @@
+# lychee ignore list -- one regex per line, matched against each URL.
+# Covers local, placeholder, and auth-gated / non-browsable URLs that appear in
+# the docs and must never be reported as broken by the report-only link check
+# (.github/workflows/lychee.yml).
+
+# --- Local / loopback (not reachable from a CI runner) ---
+^https?://localhost
+^https?://127\.0\.0\.1
+^https?://0\.0\.0\.0
+
+# --- RFC 2606 placeholder domains (example URLs in docs) ---
+^https?://([^/]+\.)?example\.com
+^https?://([^/]+\.)?example\.org
+
+# --- Auth-gated / non-browsable endpoints ---
+# GitHub Actions OIDC token endpoint (referenced in supply-chain docs; returns
+# 4xx to an unauthenticated GET, it is not a browsable page).
+^https?://token\.actions\.githubusercontent\.com
+# GitHub repo settings pages require auth and 302 to login for a CI runner.
+^https?://github\.com/[^/]+/[^/]+/settings
+
+# --- Template / placeholder URLs (unresolved substitution tokens in docs) ---
+# GitHub Actions expression placeholders, e.g. https://github.com/${{ ... }}.
+\$\{\{
+# Shell/template variable placeholders, e.g. https://github.com/${REPO}/...
+\$\{[A-Za-z_]
+# Angle-bracket version/tag placeholders, e.g. .../release.yml@refs/tags/v<version>.
+<[A-Za-z]
+# Brace placeholders for runtime-substituted values, e.g. http://127.0.0.1:{port}/metrics.
+\{[A-Za-z]

@@ -1,0 +1,28 @@
+{
+  "any_concern": false,
+  "concern_threshold_p99_at_10pct": 0.25,
+  "derivation_mode": "smoke",
+  "generated_at_iso": "2026-05-23T18:34:16+00:00",
+  "n_samples": 500,
+  "points": [
+    {
+      "baseline_p50_s": 0.7693818516094288,
+      "baseline_p95_s": 316.5936602984443,
+      "baseline_p99_s": 666.5591004638452,
+      "concern": false,
+      "delta_p50_pct": -0.0008433509368167571,
+      "delta_p95_pct": -0.08309368437136283,
+      "delta_p99_pct": -0.09503176562679698,
+      "multiplier": 1.1,
+      "param": "mu_per_sec",
+      "perturbation": "+10%",
+      "perturbed_p50_s": 0.7687329927041042,
+      "perturbed_p95_s": 290.2867266156309,
+      "perturbed_p99_s": 603.2148122521564,
+      "perturbed_value": 0.00403986,
+      "size_class": "small"
+    }
+  ],
+  "seed": 42,
+  "toml_path": "benchmarks/data/gh_distributions.toml"
+}

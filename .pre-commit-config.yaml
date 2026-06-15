@@ -1,0 +1,95 @@
+# Local hooks. Run via `uvx prek install -f` then `git commit` will
+# automatically run them. Or `uvx prek run --all-files` for an
+# ad-hoc full-tree check.  The schema is the same .pre-commit-config.yaml
+# format pre-commit consumes; prek is a Rust drop-in alternative
+# (faster startup, single binary, no Python framework install required).
+# CI runs `uvx prek run --all-files` to close every bypass route
+# (SKIP=*, --no-verify, missing local install).
+
+repos:
+  - repo: local
+    hooks:
+      - id: sync-versions
+        name: waitbus version sync
+        description: |
+          Asserts that pyproject.toml, .claude-plugin/plugin.json, and
+          server.json all carry the same version. Run
+          `scripts/sync-versions.py` (without --check) to propagate
+          after a version bump in pyproject.toml.
+        entry: scripts/sync-versions.py --check
+        language: system
+        files: ^(pyproject\.toml|\.claude-plugin/plugin\.json|server\.json)$
+        pass_filenames: false
+      - id: sdist-test-pairing
+        name: sdist maintainer-import / exclude pairing
+        description: |
+          Asserts the two hand-mirrored sdist-exclusion lists in
+          pyproject.toml ([tool.hatch.build.targets.sdist].exclude and
+          [tool.check-manifest].ignore) each equal the AST-computed set
+          of tests/*.py files that import a maintainer-only package
+          (scripts / benchmarks) at module scope, and equal each other.
+          Without the pairing, `pytest --collect-only` on an unpacked
+          sdist raises ModuleNotFoundError. Fires when a test file or
+          either pyproject list changes. The file-content sibling lives
+          in tests/test_pyproject_invariants.py.
+        entry: scripts/sdist_test_pairing.py
+        language: system
+        files: ^(pyproject\.toml|tests/.*\.py)$
+        pass_filenames: false
+      - id: derive-poll-costs-against
+        name: waitbus stats per-source defaults
+        description: |
+          Asserts waitbus/stats.py's DEFAULT_POLL_COST_*
+          constants match the empirical derivation in
+          benchmarks/poll_cost_derivation.json. Exits 1 if any
+          default drifted out from under the model.
+        entry: uv run python scripts/derive_poll_costs.py --against waitbus/stats.py
+        language: system
+        files: ^(waitbus/stats\.py|scripts/derive_poll_costs\.py|benchmarks/poll_cost_derivation\.json)$
+        pass_filenames: false
+      - id: complexity-ratchet
+        name: waitbus complexity ratchet
+        description: |
+          Asserts the docs/COMPLEXITY.md complexity-exceptions table
+          equals the C+ set radon reports for waitbus/. Either
+          side drifting (an untabled C+ function, a phantom row, or
+          a stale grade) fails. Single source of truth is the same
+          pytest used in CI.
+        entry: uv run pytest tests/test_complexity_table.py -p no:xdist -q
+        language: system
+        files: ^(waitbus/.*\.py|docs/COMPLEXITY\.md|tests/test_complexity_table\.py)$
+        pass_filenames: false
+      - id: vulture
+        name: dead-code lint (advisory)
+        description: |
+          Runs vulture across waitbus/, scripts/, benchmarks/ with
+          the pyproject [tool.vulture] config (ignore_names allowlist +
+          min-confidence 80). Catches unreferenced names so the allowlist
+          stays load-bearing instead of being silent documentation. The
+          `37b4ccd → 3ef8c99` TypeError on settings_customise_sources
+          shipped because the allowlist was treated as advisory; this
+          gate flips it to enforced. Advisory at min-confidence 80 still
+          allows occasional false positives; bump to 100 if noise.
+        entry: uv run vulture waitbus/ scripts/ benchmarks/ --min-confidence 80
+        language: system
+        files: ^(waitbus/.*\.py|scripts/.*\.py|benchmarks/.*\.py|pyproject\.toml)$
+        pass_filenames: false
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/mgedmin/check-manifest
+    rev: '0.51'
+    hooks:
+      - id: check-manifest
+        args: ['--no-build-isolation']
+        # ``--no-build-isolation`` tells check-manifest to skip the build
+        # backend's own isolation venv and reuse the surrounding env. The
+        # surrounding env is pre-commit's isolated venv for this hook,
+        # which only carries check-manifest itself unless we list extra
+        # install requirements here. Pin hatchling to the same version
+        # pyproject.toml's [build-system] declares so the hook's sdist
+        # build matches the project's release build byte-for-byte.
+        additional_dependencies: ['hatchling==1.30.1']

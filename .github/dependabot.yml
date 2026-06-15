@@ -1,0 +1,43 @@
+version: 2
+updates:
+  # Python dependencies (pyproject.toml + uv.lock). Grouped so a weekly
+  # bump arrives as one reviewable PR for patch/minor (majors separate)
+  # instead of one PR per package. Every PR runs the full CI matrix and
+  # must pass the required status checks before it can merge, so a
+  # breaking bump is caught at PR time, never on main.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions. Pinned by commit SHA (with a version comment) for
+  # supply-chain integrity; dependabot bumps the SHA and refreshes the
+  # comment. Patch/minor grouped into one PR; majors land separately so
+  # a breaking action input change (e.g. a new required `with:` key) is
+  # reviewed on its own and validated by CI before merge.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

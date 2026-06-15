@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.waitbus.broadcast</string>
+
+    <!-- Resolved by `waitbus install-launchd` at install time. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/waitbus</string>
+        <string>broadcast</string>
+        <string>serve</string>
+    </array>
+
+    <!-- Long-running broadcast hub. Same RunAtLoad + abnormal-exit restart
+         as the listener; launchd has no socket-activation equivalent we
+         rely on, so the daemon binds its own AF_UNIX socket on start
+         (manual-bind fallback in broadcast._bind_listener). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/waitbus-broadcast.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/waitbus-broadcast.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>XDG_RUNTIME_DIR</key>
+        <string>__RUNTIME_DIR__</string>
+    </dict>
+</dict>
+</plist>

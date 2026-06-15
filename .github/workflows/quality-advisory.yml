@@ -1,0 +1,63 @@
+name: quality-advisory
+
+# Non-blocking advisory layer: type + complexity checkers run for signal
+# only and never gate a merge.
+#
+# Nothing in this workflow gates a merge: every analysis step carries
+# `continue-on-error: true`, so a finding here surfaces in the checks UI but
+# never turns the PR red. The blocking contracts live elsewhere and are NOT
+# duplicated here:
+#   - `mypy --strict` (ci.yml, "Type check (mypy)") remains the SOLE blocking
+#     type gate.
+#   - the radon cyclomatic ratchet (the complexity-ratchet pre-commit hook run
+#     by ci.yml) remains the SOLE blocking complexity gate.
+#
+# The two advisories below ride alongside those gates for empirical signal:
+#   - zuban (mypy-compatible) surfaces drift from the blocking mypy gate. ~20
+#     known divergences against the mypy-`--strict`-clean tree are expected and
+#     tolerated, not "fixed" (pydantic generic, test-helper module resolution,
+#     a literal-narrowing false positive); genuine findings get mainlined as
+#     improvements. zuban is the documented migration candidate for the
+#     single-fast-gate endgame once it proves stable here.
+#   - complexipy surfaces cognitive-complexity hotspots radon's cyclomatic
+#     metric misses (deep-nesting readability), complementing the radon ratchet
+#     rather than replacing it.
+
+on:
+  pull_request:
+  schedule:
+    # Weekly full advisory sweep (Mondays 06:00 UTC) so drift and new
+    # cognitive-complexity hotspots are caught on a cadence even on weeks
+    # with no PR that touched the relevant files.
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: quality-advisory-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  advisory:
+    name: Type + complexity advisories (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: zuban mypy --strict (advisory)
+        # mypy-COMPATIBLE advisory. Surfaces drift from the blocking mypy gate
+        # in ci.yml. ~20 known divergences are expected/tolerated; this never
+        # blocks a merge.
+        continue-on-error: true
+        run: uvx zuban mypy --strict waitbus tests scripts benchmarks examples
+
+      - name: complexipy (advisory)
+        # Cognitive-complexity advisory. Complementary to the blocking radon
+        # cyclomatic ratchet; this never blocks a merge.
+        continue-on-error: true
+        run: uvx complexipy waitbus

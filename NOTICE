@@ -1,0 +1,121 @@
+waitbus
+Copyright (c) 2026 Sankalp Gilda
+
+This product is licensed under the MIT License. See the LICENSE file for the
+full license text.
+
+This product bundles no third-party source code. It does, however, declare a
+runtime dependency closure that `pip install waitbus` resolves and installs
+alongside it. The packages below are NOT redistributed inside the waitbus sdist
+or wheel; each is fetched from its own publisher and retains its own license
+and copyright. They are enumerated here so downstream redistributors have a
+single place to find the licenses that apply to a complete waitbus install.
+
+A per-dependency license audit (method, resolved versions, verdict) is
+recorded in docs/DEPENDENCY_LICENSES.md. Every license below is
+redistribution-compatible with waitbus's MIT license. The one weak-copyleft
+dependency, certifi (MPL-2.0), is file-level copyleft: its obligations attach
+only to modifications of certifi's own files, not to the MIT-licensed work
+that merely depends on it.
+
+Licenses are taken from each package's published distribution metadata
+(SPDX license expression, then OSI trove classifiers, then the License
+field). Where the metadata gives an SPDX expression with a choice (for
+example "MIT OR Apache-2.0"), waitbus exercises no election; the package
+remains available under all of the offered terms.
+
+------------------------------------------------------------------------------
+Runtime dependencies (the closure `pip install waitbus` resolves)
+------------------------------------------------------------------------------
+
+Direct runtime dependencies (declared in pyproject.toml [project.dependencies]):
+
+  mcp                       MIT                         https://modelcontextprotocol.io
+                            Copyright (c) Anthropic, PBC
+  msgspec                   BSD-3-Clause                https://github.com/jcrist/msgspec
+                            Copyright (c) Jim Crist-Harif
+  platformdirs              MIT                         https://github.com/tox-dev/platformdirs
+                            Copyright (c) The platformdirs developers
+  prometheus-client         Apache-2.0 AND BSD-2-Clause https://github.com/prometheus/client_python
+                            Copyright (c) The Prometheus Authors
+  pydantic-settings         MIT                         https://github.com/pydantic/pydantic-settings
+                            Copyright (c) Samuel Colvin and other contributors
+  stamina                   MIT                         https://github.com/hynek/stamina
+                            Copyright (c) Hynek Schlawack
+  typer                     MIT                         https://github.com/fastapi/typer
+                            Copyright (c) Sebastian Ramirez
+
+Transitive runtime dependencies (pulled in by the packages above). Two
+entries, colorama and pywin32, install only on Windows (they carry a
+sys_platform == 'win32' marker) and are not installed on Linux or macOS:
+
+  annotated-doc             MIT                         https://github.com/fastapi/annotated-doc
+  annotated-types           MIT                         https://github.com/annotated-types/annotated-types
+  anyio                     MIT                         https://github.com/agronholm/anyio
+  attrs                     MIT                         https://github.com/python-attrs/attrs
+  certifi                   MPL-2.0                     https://github.com/certifi/python-certifi
+  click                     BSD-3-Clause                https://github.com/pallets/click
+  colorama                  BSD-3-Clause (Windows only) https://github.com/tartley/colorama
+  h11                       MIT                         https://github.com/python-hyper/h11
+  httpcore                  BSD-3-Clause                https://github.com/encode/httpcore
+  httpx                     BSD-3-Clause                https://github.com/encode/httpx
+  httpx-sse                 MIT                         https://github.com/florimondmanca/httpx-sse
+  idna                      BSD-3-Clause                https://github.com/kjd/idna
+  jsonschema                MIT                         https://github.com/python-jsonschema/jsonschema
+  jsonschema-specifications MIT                         https://github.com/python-jsonschema/jsonschema-specifications
+  markdown-it-py            MIT                         https://github.com/executablebooks/markdown-it-py
+  mdurl                     MIT                         https://github.com/executablebooks/mdurl
+  pydantic                  MIT                         https://github.com/pydantic/pydantic
+  pydantic-core             MIT                         https://github.com/pydantic/pydantic-core
+  pygments                  BSD-2-Clause                https://github.com/pygments/pygments
+  pyjwt                     MIT                         https://github.com/jpadilla/pyjwt
+  python-dotenv             BSD-3-Clause                https://github.com/theskumar/python-dotenv
+  python-multipart          Apache-2.0                  https://github.com/Kludex/python-multipart
+  pywin32                   PSF-2.0 (Windows only)      https://github.com/mhammond/pywin32
+  referencing               MIT                         https://github.com/python-jsonschema/referencing
+  rich                      MIT                         https://github.com/Textualize/rich
+  rpds-py                   MIT                         https://github.com/crate-py/rpds
+  shellingham               ISC                         https://github.com/sarugaku/shellingham
+  sse-starlette             BSD-3-Clause                https://github.com/sysid/sse-starlette
+  starlette                 BSD-3-Clause                https://github.com/encode/starlette
+  tenacity                  Apache-2.0                  https://github.com/jd/tenacity
+  typing-extensions         PSF-2.0                     https://github.com/python/typing_extensions
+  typing-inspection         MIT                         https://github.com/pydantic/typing-inspection
+  uvicorn                   BSD-3-Clause                https://github.com/encode/uvicorn
+
+------------------------------------------------------------------------------
+Optional dependencies (installed only via the matching extra)
+------------------------------------------------------------------------------
+
+  [analyze]        duckdb                  MIT                         https://github.com/duckdb/duckdb
+  [fs]             watchdog                Apache-2.0                  https://github.com/gorakhargosh/watchdog
+  [bench] / [soak] hdrhistogram            Apache-2.0                  https://github.com/HdrHistogram/HdrHistogram_py
+  [bench] / [soak] pbr                     Apache-2.0                  https://opendev.org/openstack/pbr
+  [bench] / [soak] setuptools              MIT                         https://github.com/pypa/setuptools
+  [bench]          tiktoken                MIT                         https://github.com/openai/tiktoken
+  [bench]          regex                   Apache-2.0 AND CNRI-Python  https://github.com/mrabarnett/mrab-regex
+  [bench]          requests                Apache-2.0                  https://github.com/psf/requests
+  [bench]          charset-normalizer      MIT                         https://github.com/jawah/charset_normalizer
+  [plugin-verify]  pypi-attestations       Apache-2.0                  https://github.com/trailofbits/pypi-attestations
+  [plugin-verify]  sigstore                Apache-2.0                  https://github.com/sigstore/sigstore-python
+  [plugin-verify]  sigstore-models         Apache-2.0                  https://github.com/sigstore/sigstore-python
+  [plugin-verify]  sigstore-rekor-types    Apache-2.0                  https://github.com/sigstore/rekor
+  [plugin-verify]  cryptography            Apache-2.0 OR BSD-3-Clause  https://github.com/pyca/cryptography
+  [plugin-verify]  pyopenssl               Apache-2.0                  https://github.com/pyca/pyopenssl
+  [plugin-verify]  cffi                    MIT                         https://github.com/python-cffi/cffi
+  [plugin-verify]  pycparser               BSD-3-Clause                https://github.com/eliben/pycparser
+  [plugin-verify]  pyasn1                  BSD-2-Clause                https://github.com/pyasn1/pyasn1
+  [plugin-verify]  securesystemslib        MIT                         https://github.com/secure-systems-lab/securesystemslib
+  [plugin-verify]  tuf                     Apache-2.0 OR MIT           https://github.com/theupdateframework/python-tuf
+  [plugin-verify]  id                      Apache-2.0                  https://github.com/di/id
+  [plugin-verify]  rfc3161-client          Apache-2.0                  https://github.com/trailofbits/rfc3161-client
+  [plugin-verify]  rfc3986                 Apache-2.0                  https://github.com/python-hyper/rfc3986
+  [plugin-verify]  rfc8785                 Apache-2.0                  https://github.com/trailofbits/rfc8785.py
+  [plugin-verify]  packaging               Apache-2.0 OR BSD-2-Clause  https://github.com/pypa/packaging
+  [plugin-verify]  requests                Apache-2.0                  https://github.com/psf/requests
+  [plugin-verify]  charset-normalizer      MIT                         https://github.com/jawah/charset_normalizer
+  [plugin-verify]  urllib3                 MIT                         https://github.com/urllib3/urllib3
+
+Copyright holders for the transitive and optional packages above are recorded
+in each package's own distribution metadata and license file; consult the
+project URLs for the authoritative copyright and license text.

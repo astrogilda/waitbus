@@ -1,0 +1,375 @@
+name: waitbus release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Distinguish strict release tags (vN.N.N or vN.N.N.postN) from
+  # pre-release tags (-rc1, -alpha, -beta, -dev, ...). Pre-release tags
+  # still trigger the test matrix as a rehearsal but skip every publish
+  # job so PyPI version slots are not burned on dry runs.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.check.outputs.is_release }}
+    steps:
+      - name: Classify tag as release or pre-release
+        id: check
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.post[0-9]+)?$ ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release tag detected ($GITHUB_REF_NAME); publish jobs will run."
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pre-release tag detected ($GITHUB_REF_NAME); publish jobs will be skipped."
+          fi
+
+  test:
+    name: Test (py${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+        # macos-14 (Apple Silicon Sonoma) exercises the launchd port +
+        # getpeereid() shim. macos-15 (Sequoia) would also work but
+        # macos-14 is the cheapest still-supported Apple Silicon runner
+        # at this point in the Apple version-numbering schedule. macOS
+        # cells bill at ~10x Linux on private repos and ~2x on public.
+        os: [ubuntu-latest, macos-14]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Restore uv venv cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .venv
+          key: uv-venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-venv-${{ runner.os }}-py${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Restore prek hook cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/prek
+          key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            prek-${{ runner.os }}-
+
+      - name: Run pre-commit hooks (all files, all hooks)
+        # Single tag-side gate covering every hook in
+        # .pre-commit-config.yaml.  Subsumes the prior standalone ruff
+        # check + the version-drift guard (both run via the local
+        # `ruff-check` and `sync-versions` hooks).  See ci.yml for the
+        # rationale; tag-pushed builds run the same gate so a release
+        # cannot ship past lint/format/local-hook surface even if
+        # commit-time hooks were bypassed.
+        run: uvx prek run --all-files --show-diff-on-failure --color=always
+
+      - name: Type check (mypy)
+        run: uv run mypy
+
+      - name: Run tests
+        run: uv run pytest tests/ -vv -p no:xdist
+      # systemd-analyze verify of the shipped units is exercised by
+      # tests/test_install.py against the wheel-installed binaries; no
+      # separate step needed.
+
+      - name: Smoke-test install-launchd (macOS only)
+        if: runner.os == 'macOS'
+        # Exercise the macOS install path before tagging the release.
+        # --no-enable avoids loading the agents on the runner; plutil
+        # -lint validates every resolved plist as well-formed plist XML.
+        run: |
+          uv run waitbus install launchd --no-enable
+          for p in "$HOME/Library/LaunchAgents/"dev.waitbus.*.plist; do
+            echo "Validating $p"
+            plutil -lint "$p"
+          done
+
+  reproducibility-check:
+    name: Reproducible-build check (byte-identical sdist + wheel)
+    needs: gate
+    # Runs on every tag (strict and pre-release). Pre-release tags use
+    # the artifact to rehearse via publish-testpypi-dryrun; strict tags
+    # feed publish-pypi.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Build #1 (sdist + wheel)
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct ${{ github.ref }})
+          export SOURCE_DATE_EPOCH
+          uv build --sdist --wheel --out-dir /tmp/build1
+
+      - name: Build #2 (sdist + wheel)
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct ${{ github.ref }})
+          export SOURCE_DATE_EPOCH
+          uv build --sdist --wheel --out-dir /tmp/build2
+
+      - name: Assert sdist + wheel byte-identical
+        run: |
+          diff -s \
+            <(sha256sum /tmp/build1/waitbus-*.tar.gz | cut -d' ' -f1) \
+            <(sha256sum /tmp/build2/waitbus-*.tar.gz | cut -d' ' -f1)
+          diff -s \
+            <(sha256sum /tmp/build1/waitbus-*.whl | cut -d' ' -f1) \
+            <(sha256sum /tmp/build2/waitbus-*.whl | cut -d' ' -f1)
+
+  build:
+    name: Build distributions
+    needs: [gate, test, reproducibility-check]
+    # Runs on every tag. The hashes output feeds provenance (strict only)
+    # and the dist artifact feeds either publish-pypi (strict) or
+    # publish-testpypi-dryrun (pre-release).
+    runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Pin SOURCE_DATE_EPOCH from tag commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct ${{ github.ref }})" >> "$GITHUB_ENV"
+
+      - name: Build distributions
+        run: uv build --sdist --wheel
+
+      - name: Hash distributions
+        id: hash
+        run: |
+          cd dist
+          echo "hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  provenance:
+    name: Generate SLSA build provenance
+    needs: [build]
+    permissions:
+      actions: read       # detect GitHub Actions environment
+      id-token: write     # OIDC token for sigstore
+      contents: write     # upload provenance to GitHub Release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+      upload-assets: true
+      provenance-name: waitbus-${{ github.ref_name }}.intoto.jsonl
+
+  publish-testpypi-dryrun:
+    name: Publish to TestPyPI (pre-release tag rehearsal)
+    needs: [gate, test, reproducibility-check, build]
+    # Fires on pre-release tags only (rc/alpha/beta/dev suffixes) where
+    # the gate emits is_release=false. Lets an operator rehearse the
+    # full publish chain (OIDC + sigstore + attestations) against
+    # test.pypi.org before cutting a strict release tag, without
+    # burning a real PyPI version slot.
+    if: needs.gate.outputs.is_release != 'true'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        with:
+          packages-dir: dist/
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+
+  publish-pypi:
+    name: Publish to PyPI (OIDC + sigstore)
+    needs: [gate, test, reproducibility-check, build, provenance]
+    if: needs.gate.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      attestations: write
+      contents: write
+
+    steps:
+      - name: Guard against wrong-tag prefix
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::This workflow only publishes v* tags, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Verify tag matches pyproject version
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          version=$(uv run python -c "import tomllib,sys; print(tomllib.loads(open('pyproject.toml','rb').read())['project']['version'])")
+          [ "$tag" = "$version" ] || { echo "::error::tag $tag != pyproject version $version"; exit 1; }
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Vulnerability scan (against the built artifacts)
+        # Run against the lockfile; a compromised dependency never produces a wheel.
+        # osv-scanner v2 reorganized the CLI under explicit subcommands.
+        run: pipx run osv-scanner==2.3.8 scan source --lockfile=uv.lock
+
+      - name: Generate CycloneDX SBOM
+        run: pipx run cyclonedx-bom==7.3.0 -o sbom.cdx.json --validate
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: 'dist/*'
+          sbom-path: 'sbom.cdx.json'
+
+      - name: Publish to PyPI (OIDC + sigstore + PEP 740 attestations)
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+
+  publish-mcp-registry:
+    name: Publish to MCP Registry
+    needs: [gate, test, publish-pypi]
+    if: needs.gate.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Guard against wrong-tag prefix
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::This workflow only publishes v* tags, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+
+      - name: Install mcp-publisher CLI
+        run: npm install -g @modelcontextprotocol/publisher@1.7.8
+
+      - name: Authenticate with MCP Registry (GitHub OIDC)
+        run: mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish
+
+  github-release:
+    name: Create GitHub Release with plugin artifact
+    needs: [gate, publish-pypi, publish-mcp-registry]
+    if: needs.gate.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Guard against wrong-tag prefix
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::This workflow only publishes v* tags, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section matching this version from CHANGELOG.md
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+          # Write to file to preserve newlines
+          echo "$NOTES" > /tmp/release-notes.md
+
+      - name: Build plugin .zip artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ZIP_NAME="${VERSION}-plugin.zip"
+          # Build zip from repo root, excluding build artifacts and dev dirs
+          zip -r "/tmp/${ZIP_NAME}" . \
+            --exclude "tests/*" \
+            --exclude "docs/*" \
+            --exclude "dist/*" \
+            --exclude ".venv/*" \
+            --exclude "htmlcov/*" \
+            --exclude "__pycache__/*" \
+            --exclude ".pytest_cache/*" \
+            --exclude "*.egg-info/*" \
+            --exclude ".git/*"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "ZIP_PATH=/tmp/${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      - name: Attest plugin .zip
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: ${{ env.ZIP_PATH }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          body_path: /tmp/release-notes.md
+          files: ${{ env.ZIP_PATH }}
+          name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true

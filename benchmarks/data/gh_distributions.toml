@@ -1,0 +1,126 @@
+# GitHub workflow_run distribution priors for benchmarks/gen_corpus.py
+#
+# Sources (numeric summaries only; raw datasets NOT redistributed):
+#   - workflow-histories (Cardoen / Mens / Decan, MSR 2024)
+#       Zenodo DOI: 10.5281/zenodo.17301952  (CC-BY-4.0)
+#   - GHALogs (Moriconi / Durieux / Falleri / Troncy / Francillon)
+#       Zenodo DOI: 10.5281/zenodo.10154920  (CC-BY-SA-4.0)
+#   - octokit/webhooks payload schemas (commit
+#       76f8deb2d40c05aa72a8281eb0113dbe5e6a8495, MIT)
+#
+# Methodology: scripts/derive_gh_distributions.py --derive
+# Hawkes parameters fit via method-of-moments (Hawkes 1971; Daley &
+# Vere-Jones 2003 Vol I §5.5). MoM is consistent but less efficient
+# than MLE; waitbus's purpose is qualitative-shape-mirroring for a
+# replayable benchmark corpus, NOT parameter inference for academic
+# publication.
+#
+# Reproducibility contract: changes to this file MUST be accompanied
+# by regeneration of benchmarks/data/corpus.jsonl.gz; the `--check`
+# mode of benchmarks/gen_corpus.py verifies the corpus against the
+# hash of this file plus the generator version.
+
+[meta]
+schema_version = 1
+generator_version = "0.1.0"
+derived_at_iso = "2026-05-22T19:36:42+00:00"
+derivation_mode = "empirical-method-of-moments"
+derivation_script = "scripts/derive_gh_distributions.py"
+sources = [
+    "zenodo:10.5281/zenodo.17301952",
+    "zenodo:10.5281/zenodo.10154920",
+    "github:octokit/webhooks@76f8deb2d40c05aa72a8281eb0113dbe5e6a8495",
+]
+licenses = ["CC-BY-4.0", "CC-BY-SA-4.0", "MIT"]
+
+# --- Top-N workflow names by empirical frequency -----------------------------
+[workflow_names]
+CI = 0.0456
+"pages build and deployment" = 0.0384
+CodeQL = 0.0349
+Tests = 0.0295
+Build = 0.0211
+Release = 0.02
+Lint = 0.01
+"Mark stale issues and pull requests" = 0.0051
+Publish = 0.0042
+Scheduled = 0.0038
+_other = 0.7874
+
+# --- Branch name pattern frequencies ----------------------------------------
+[branch_patterns]
+main = 0.4292
+"feature/*" = 0.0115
+"hotfix/*" = 0.0005
+"dependabot/*" = 0.0641
+"release/*" = 0.0046
+"renovate/*" = 0.0243
+other = 0.4658
+
+# --- workflow_run conclusion frequencies ------------------------------------
+[conclusions]
+success = 0.7823
+failure = 0.1477
+cancelled = 0.04
+skipped = 0.02
+timed_out = 0.005
+action_required = 0.003
+neutral = 0.001
+null = 0.001
+
+# --- Exit-code frequencies (conditional on conclusion=failure) -------------
+[exit_codes_on_failure]
+"1" = 0.62
+"2" = 0.11
+"124" = 0.08
+"137" = 0.06
+"139" = 0.02
+"143" = 0.05
+"255" = 0.04
+_other = 0.02
+
+# --- Hawkes-process burst parameters per repo size class --------------------
+# Size classes defined by workflow-histories stargazer counts:
+#   small  = <  1_000 stargazers
+#   medium = 1k - 10k stargazers
+#   large  = > 10_000 stargazers
+# Units: mu and alpha are per-second rates; beta is per-second decay.
+
+[hawkes.small]
+mu_per_sec = 0.0036726
+alpha = 0.416148
+beta = 0.5
+
+[hawkes.medium]
+mu_per_sec = 0.0010619
+alpha = 0.289982
+beta = 0.333333
+
+[hawkes.large]
+mu_per_sec = 0.0002423
+alpha = 0.179758
+beta = 0.2
+
+# --- Per-event-type transition matrix --------------------------------------
+[transitions.workflow_run_requested]
+workflow_run_in_progress = 0.92
+workflow_run_completed = 0.05
+workflow_run_requested = 0.03
+
+[transitions.workflow_run_in_progress]
+workflow_run_completed = 0.88
+workflow_run_in_progress = 0.1
+workflow_run_requested = 0.02
+
+[transitions.workflow_run_completed]
+workflow_run_requested = 0.46
+workflow_run_completed = 0.42
+workflow_run_in_progress = 0.12
+
+# --- Source mix (for the public --source-mix CLI default) ------------------
+[source_mix_default]
+github = 0.4
+pytest = 0.15
+docker = 0.15
+fs = 0.1
+agent = 0.2

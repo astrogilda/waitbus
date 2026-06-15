@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.waitbus.listener</string>
+
+    <!-- Resolved by `waitbus install-launchd` at install time. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/waitbus</string>
+        <string>listener</string>
+        <string>serve</string>
+    </array>
+
+    <!-- Long-running daemon: start at agent load, restart on abnormal exit.
+         Clean SIGTERM shutdown returns 0 and the agent stays down until
+         next launchctl bootstrap or login (matching the Linux service
+         Restart=on-failure shape). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Backoff floor so a crashloop doesn't busy-spin. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/waitbus-listener.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/waitbus-listener.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>XDG_RUNTIME_DIR</key>
+        <string>__RUNTIME_DIR__</string>
+    </dict>
+</dict>
+</plist>
