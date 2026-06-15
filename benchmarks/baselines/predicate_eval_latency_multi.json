@@ -1,0 +1,92 @@
+{
+  "bench_name": "predicate_eval_latency_multi",
+  "waitbus_version": "0.5.0",
+  "started_at_ns": 1779243708285922272,
+  "ended_at_ns": 1779243708302780814,
+  "n_samples": 5000,
+  "n_warmup_discarded": 500,
+  "rate_hz": 0.0,
+  "percentiles_gc_enabled": {
+    "p50": {
+      "value_ns": 440,
+      "ci_low_ns": 440,
+      "ci_high_ns": 440,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 540,
+      "ci_low_ns": 540,
+      "ci_high_ns": 540,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 690,
+      "ci_low_ns": 670,
+      "ci_high_ns": 700,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "percentiles_gc_disabled": {
+    "p50": {
+      "value_ns": 440,
+      "ci_low_ns": 440,
+      "ci_high_ns": 440,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 530,
+      "ci_low_ns": 530,
+      "ci_high_ns": 530,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 670,
+      "ci_low_ns": 650,
+      "ci_high_ns": 690,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "clamp_stats_gc_enabled": {
+    "low": 0,
+    "high": 0
+  },
+  "clamp_stats_gc_disabled": {
+    "low": 0,
+    "high": 0
+  },
+  "environment": {
+    "hostname": "waitbus-bench-20260519-232017-112373e",
+    "python_version": "3.12.3",
+    "platform": "Linux 6.8.0-117-generic",
+    "cpu_model": "AMD EPYC-Milan Processor",
+    "cpu_governor": null,
+    "aslr_disabled": true,
+    "taskset_mask": "2,3",
+    "waitbus_version": "0.5.0",
+    "warnings": []
+  },
+  "extra": {
+    "smoke": false,
+    "frame_gen_seed": 113883,
+    "frame_distribution": {
+      "github": 1375,
+      "pytest": 1375,
+      "docker": 1375,
+      "fs": 1375
+    },
+    "predicate_source": "source=\"github\" source=\"pytest\" source=\"docker\""
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

@@ -1,0 +1,21 @@
+# Tier 2 — channels-reference contract anchor.
+# Source: https://code.claude.com/docs/en/channels-reference
+#
+# Each non-comment line is one canonical JSON-RPC envelope a spec-compliant
+# emitter MUST produce for the listed scenario. Independent of how the
+# emitter is implemented (hand-rolled wire vs SDK); the SDK rewrite is
+# valid iff its output parses to a JSON-RPC envelope semantically equal to
+# one of these references for the matching scenario.
+#
+# Contract invariants encoded here:
+#  - params.content is a single string (NOT the MCP-spec content[] array).
+#  - params.meta keys match [a-zA-Z0-9_]+; hyphenated/dotted keys would be
+#    silently dropped by Claude Code's renderer and are rejected at the
+#    builder boundary by both the prior _mcp_wire layer and the SDK rewrite.
+#  - notifications/initialized has NO id (it is a notification, not request).
+#  - resources/updated params has the single required field "uri".
+#
+# Minimal-meta channel emission (single string content, two identifier-form meta keys).
+{"jsonrpc":"2.0","method":"notifications/claude/channel","params":{"content":"build green","meta":{"repo":"o/r","event_id":"01ABC"}}}
+# Resource-updated emission (spec-standard parallel-path alongside claude/channel).
+{"jsonrpc":"2.0","method":"notifications/resources/updated","params":{"uri":"waitbus://event/01ABC"}}

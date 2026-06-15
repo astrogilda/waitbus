@@ -1,0 +1,86 @@
+# Python build / cache artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Virtualenv (managed by `uv sync` or `pip install -e`)
+.venv/
+
+# Test / type-check / property-test / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.json
+htmlcov/
+
+# IDE / editor scratch
+.vscode/
+.idea/
+
+# Serena MCP project state (local LSP cache, no upstream consumers)
+.serena/
+
+# Claude harness session state (per-conversation correlation IDs; not source)
+.claude_correlation/
+
+# Per-run benchmark output JSONs (host- and timestamp-stamped). Only the
+# committed baselines under benchmarks/baselines/ are tracked; per-run
+# results land here for ad-hoc inspection but are runner-specific.
+benchmarks/results/*.json
+
+# Vendored hetzner-bench-toolkit clone used by scripts/run_soak_on_hetzner.sh
+# on the maintainer-side soak runner.  The clone lives tracked on the
+# `hbt-extraction-2026-05-22` sibling branch (where it provides the
+# provisioning library); on `main` it remains an embedded git checkout
+# that should not be tracked-by-git here and is already excluded from the
+# sdist via `[tool.hatch.build.targets.sdist].exclude` in pyproject.toml.
+scripts/.hbt/
+
+# Strategy-session transcripts: consolidated planning discussions kept
+# local-only by policy.
+docs/strategy-sessions/
+
+# Session-end audit reports: aggregated findings from per-session
+# multi-agent audit fan-outs (mypy, project-health, code-reviewer,
+# code-simplifier). Each session's bundle lives under a dated subdirectory
+# with an INDEX.md + per-collector logs/. Internal-only by policy.
+docs/audit-reports/
+
+# onefilellm context bundles (derived artifacts, never committed)
+crawl-output/
+
+# Operator-local pytest run logs (per-run timestamped .log + .junit.xml +
+# warnings.log). Persistent across reboots so a failed / skipped / warned
+# run can be retroactively inspected without re-execution. Drop here via
+# scripts/run_full_pytest.sh.
+.local-pytest-logs/
+
+# Operator-local stress run logs (per-run timestamped .log + .verdict.json
+# + .progress.jsonl). Persistent across reboots so an operator-driven
+# real-mode stress invocation can be re-inspected without re-execution.
+.local-stress-logs/
+
+# Operator-local reference fixtures: live-recorded LLM envelopes the
+# operator captures off ``claude -p`` / ``gemini -p`` runs and uses as a
+# source-of-truth shape reference. The tests embed envelope content
+# inline (see ``tests/test_stress_real_drivers.py``); this directory is
+# the operator's working copy of the live captures and is not shipped.
+tests/fixtures/
+
+# codedb MCP index snapshot — a generated, rebuildable code index dropped
+# at the repo root by the codedb tooling. Not source; never committed.
+codedb.snapshot
+
+# Benchmark run output — per-run timestamped verdict/log/progress scratch the
+# benches write here; a good run is promoted to benchmarks/baselines/ (which IS
+# committed). The dir itself is kept via .gitkeep; individual runs are scratch.
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+
+# local soak-run outputs (fetched from Hetzner)
+soak-verdict.json
+soak-verdict.json.progress.jsonl

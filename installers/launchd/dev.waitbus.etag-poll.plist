@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.waitbus.etag-poll</string>
+
+    <!-- Resolved by `waitbus install-launchd` at install time. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/waitbus</string>
+        <string>etag-poll</string>
+        <string>run</string>
+    </array>
+
+    <!-- Periodic worker. Matches the Linux timer's
+         OnUnitActiveSec=45s cadence; launchd's StartInterval fires N
+         seconds after the previous invocation completes (not wall-clock,
+         which avoids overlapping invocations on slow runs). -->
+    <key>StartInterval</key>
+    <integer>45</integer>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/waitbus-etag-poll.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/waitbus-etag-poll.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>XDG_RUNTIME_DIR</key>
+        <string>__RUNTIME_DIR__</string>
+    </dict>
+</dict>
+</plist>

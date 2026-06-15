@@ -1,0 +1,11 @@
+# waitbus launchd plist manifest
+# Canonical list of LaunchAgent plists the package ships. `waitbus
+# install-launchd --sync` reads this to detect orphans in
+# ~/Library/LaunchAgents/ that previous package versions installed but
+# the current version no longer needs.
+#
+# Format: one filename per line, '#' comments allowed.
+dev.waitbus.listener.plist
+dev.waitbus.broadcast.plist
+dev.waitbus.etag-poll.plist
+dev.waitbus.watchdog.plist

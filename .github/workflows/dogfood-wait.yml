@@ -1,0 +1,92 @@
+name: dogfood-wait
+
+# Daily smoke: spawn the broadcast daemon, emit a synthetic github
+# workflow_run event, and let `waitbus wait` block on the matching
+# predicate. Exits zero on a successful match.
+#
+# This is the self-dogfooding surface from the daemon's own perspective
+# -- the wait CLI is the headline source-agnostic API, and an external
+# regression (CLI broken, daemon socket binding regressed, predicate
+# parser broken) is caught here before users notice. Daily cadence is
+# enough; the unit + integration tests in `tests/` already cover most
+# regressions on every PR, and this workflow exists for the
+# end-to-end-against-real-binary surface.
+
+on:
+  schedule:
+    - cron: "30 5 * * *"  # 05:30 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: dogfood-wait-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-groups"
+      - name: Spawn broadcast daemon
+        env:
+          WAITBUS_STATE_DIR: ${{ runner.temp }}/waitbus-state
+          WAITBUS_RUNTIME_DIR: ${{ runner.temp }}/waitbus-runtime
+          WAITBUS_HEARTBEAT_SEC: "3600"
+        run: |
+          set -euo pipefail
+          mkdir -p "$WAITBUS_STATE_DIR" "$WAITBUS_RUNTIME_DIR"
+          # nohup + & detaches the daemon from the runner shell; PID is
+          # captured so the cleanup step can SIGTERM it.
+          nohup uv run waitbus broadcast serve > "$RUNNER_TEMP/daemon.log" 2>&1 &
+          echo "DAEMON_PID=$!" >> "$GITHUB_ENV"
+          # Wait for the socket to bind before issuing the wait.
+          for _ in $(seq 1 50); do
+            if [[ -S "$WAITBUS_RUNTIME_DIR/broadcast.sock" ]]; then
+              echo "broadcast socket ready"
+              break
+            fi
+            sleep 0.2
+          done
+          test -S "$WAITBUS_RUNTIME_DIR/broadcast.sock"
+      - name: Wait for synthetic github frame
+        env:
+          WAITBUS_STATE_DIR: ${{ runner.temp }}/waitbus-state
+          WAITBUS_RUNTIME_DIR: ${{ runner.temp }}/waitbus-runtime
+        # `waitbus wait` blocks until a matching frame arrives; the
+        # synthetic emit runs in parallel via &. The wait timeout is
+        # the smoke's overall pass/fail signal: any waitbus-side
+        # regression (daemon hang, broken predicate matcher, broken
+        # exit-code semantics) surfaces as a non-zero exit here.
+        run: |
+          set -euo pipefail
+          # Background emitter: insert a github workflow_run row that
+          # matches the wait predicate after a brief delay so the wait
+          # has time to subscribe.
+          ( sleep 2 && uv run python scripts/dogfood_emit_synthetic.py ) &
+          # --match keys are dotted paths against the broadcast frame.
+          # The frame nests Event columns under `fields.*`, so
+          # `conclusion` lives at `fields.conclusion`. The RHS must be
+          # a JSON literal, hence the doubled quotes.
+          uv run waitbus wait \
+            --match 'fields.source="github"' \
+            --match 'fields.conclusion="success"' \
+            --timeout 30s
+      - name: Stop daemon and surface log
+        if: always()
+        run: |
+          if [[ -n "${DAEMON_PID:-}" ]]; then
+            kill "${DAEMON_PID}" 2>/dev/null || true
+          fi
+          echo '## broadcast daemon log'
+          echo
+          echo '```'
+          cat "$RUNNER_TEMP/daemon.log" || echo "(no log)"
+          echo '```'

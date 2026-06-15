@@ -1,0 +1,134 @@
+name: benchmarks
+
+# Tiered execution:
+#
+# - pull_request: smoke each bench in --smoke + --check-regression mode.
+#   Wall-clock target < 5 min total. Catches gross regressions on every
+#   PR without serializing the merge queue behind a 45-min nightly run.
+# - schedule (nightly 06:00 UTC): full default-N runs, uploaded as
+#   artifacts. Does not commit baselines (the canonical baseline-capture
+#   step requires the operator's taskset + cpufreq governor + ASLR-off
+#   setup, which a GitHub-hosted runner cannot provide).
+# - workflow_dispatch (release-tag operator triggers manually): full N
+#   runs, intended to be invoked by the operator AFTER they have applied
+#   the canonical recipe on a self-hosted/dedicated runner; commits the
+#   regenerated benchmarks/baselines/ artifacts in a follow-up PR.
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "waitbus/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/bench.yml"
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "smoke | full"
+        required: true
+        default: "full"
+
+concurrency:
+  group: bench-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: bench-smoke (PR regression gate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-extras"
+      - name: Pin nats image (for bench_idle_rss)
+        run: bash benchmarks/setup/pin_nats_image.sh
+      - name: Lint benchmarks
+        run: |
+          uv run ruff check benchmarks
+          uv run mypy benchmarks
+      - name: Smoke each bench
+        env:
+          # Smoke mode skips --check-regression internally (1-sample
+          # percentiles are meaningless); the goal here is "the bench
+          # still imports + runs end-to-end on a clean runner".
+          WAITBUS_BENCH_SMOKE: "1"
+        run: |
+          set -euo pipefail
+          for bench in \
+              bench_notify_to_wake \
+              bench_predicate_eval_latency_multi \
+              bench_ttfae_pytest \
+              bench_ttfae_fs \
+              bench_ttfae_first_match \
+              bench_predicate_wait_under_mixed_load \
+              bench_ttfae_github \
+              bench_ttfae_docker \
+              bench_polling_baseline_github \
+              bench_polling_baseline_pytest \
+              bench_polling_baseline_docker \
+              bench_polling_baseline_fs \
+              bench_polling_baseline_fs_inotifywait \
+              bench_idle_rss \
+              bench_throughput \
+              bench_tokens_saved; do
+            echo "::group::$bench --smoke"
+            uv run python -m benchmarks.$bench --smoke
+            echo "::endgroup::"
+          done
+
+  nightly-full:
+    name: bench-full (nightly + manual)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-extras"
+      - name: Pin nats image
+        run: bash benchmarks/setup/pin_nats_image.sh
+      - name: Full bench run (default N)
+        run: |
+          set -euo pipefail
+          mkdir -p benchmarks/results
+          for bench in \
+              bench_notify_to_wake \
+              bench_predicate_eval_latency_multi \
+              bench_ttfae_pytest \
+              bench_ttfae_fs \
+              bench_ttfae_first_match \
+              bench_predicate_wait_under_mixed_load \
+              bench_ttfae_github \
+              bench_ttfae_docker \
+              bench_polling_baseline_github \
+              bench_polling_baseline_pytest \
+              bench_polling_baseline_docker \
+              bench_polling_baseline_fs \
+              bench_polling_baseline_fs_inotifywait \
+              bench_idle_rss \
+              bench_throughput \
+              bench_tokens_saved; do
+            echo "::group::$bench (full)"
+            uv run python -m benchmarks.$bench
+            echo "::endgroup::"
+          done
+      - name: Upload bench results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-results-${{ github.run_id }}
+          path: benchmarks/results/
+          retention-days: 30

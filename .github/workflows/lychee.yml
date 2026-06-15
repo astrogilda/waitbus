@@ -1,0 +1,102 @@
+name: lychee
+
+# External-URL link checker, two tiers:
+#
+#   - PR tier (blocking): on a pull request, check ONLY the markdown files the
+#     PR touched and FAIL on a genuinely broken link (hard 404 / dead host /
+#     DNS failure). External URLs are network-flaky, so --max-retries smooths
+#     transients and --accept tolerates rate-limiting (429) rather than
+#     blocking on it. Scoping to touched files gates a PR on the links in
+#     what it changed -- a new dead link turns the PR red -- while pre-existing
+#     rot in files the PR did not touch stays advisory.
+#   - Weekly tier (advisory): a full sweep over the documentation surface
+#     catches links that rot upstream between PRs. It never blocks (it runs on
+#     a schedule with continue-on-error); it only surfaces drift.
+#
+# lychee reads .lycheeignore (committed) for auth-gated, localhost, and
+# placeholder URL patterns, so those are never reported as broken in either
+# tier. Enforcing the blocking tier as a required status check is a branch-
+# protection setting (operator action at the public flip), not a workflow
+# concern -- this file produces the failing check; branch protection decides
+# whether it blocks merge.
+
+on:
+  pull_request:
+    # Only when markdown changes -- nothing else carries the external URLs.
+    paths:
+      - "**/*.md"
+      - "docs/**"
+  schedule:
+    # Weekly full sweep (Mondays 07:00 UTC).
+    - cron: "0 7 * * 1"
+
+concurrency:
+  group: lychee-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changed-link-check:
+    name: Link check changed markdown (blocking on new broken links)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history so the PR's base..head markdown diff resolves.
+          fetch-depth: 0
+
+      - name: Collect the markdown files this PR touched
+        id: changed
+        run: |
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.event.pull_request.head.sha }}'
+          # Three-dot diff = the merge-base..head changes (the files THIS PR
+          # touched), not base-branch advances since the fork. --diff-filter=d
+          # drops deleted files. ./-prefix each path so a filename beginning
+          # with '-' is read by lychee as a path, never a flag.
+          files=$(git diff --name-only --diff-filter=d "$base...$head" -- '*.md' | sed 's|^|./|' | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          if [ -n "$files" ]; then
+            echo "Changed markdown: $files"
+          else
+            echo "No markdown changed in the diff; the blocking check is a no-op."
+          fi
+
+      - name: Run lychee on the changed markdown (fail on a new broken link)
+        if: steps.changed.outputs.files != ''
+        uses: lycheeverse/lychee-action@82202e5e9c2f4ef1a55a3d02563e1cb6041e5332 # v2.4.1
+        with:
+          # --max-retries smooths transient network failures. --accept
+          # REPLACES lychee's default accepted set, so the full 2xx range must
+          # be listed explicitly (a 201/204 link would otherwise be rejected);
+          # 429 (rate-limited, not dead) is added so a throttled host does not
+          # false-block a PR. A hard 404 / dead host in a touched file still
+          # fails. .lycheeignore excludes known auth-gated / local / placeholder
+          # URLs.
+          args: >-
+            --max-retries 3
+            --accept 200..=299,429
+            ${{ steps.changed.outputs.files }}
+          fail: true
+
+  full-link-check:
+    name: Full link sweep (advisory, weekly)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run lychee over the documentation surface (report-only)
+        continue-on-error: true
+        uses: lycheeverse/lychee-action@82202e5e9c2f4ef1a55a3d02563e1cb6041e5332 # v2.4.1
+        with:
+          # Scope to the documentation surface that carries external URLs.
+          args: >-
+            --max-retries 3
+            README.md docs/**/*.md
+          fail: false

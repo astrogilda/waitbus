@@ -1,0 +1,17 @@
+# Multi-container demo. Each service exits on its own so a downstream
+# waitbus `docker_watch` subscriber observes one docker_container event
+# per `docker compose up`. The services are intentionally trivial; the
+# value here is the docker event stream, not the container payload.
+
+services:
+  fast-exit:
+    image: alpine:3.20
+    command: sh -c "echo 'fast-exit done'; exit 0"
+
+  slow-exit:
+    image: alpine:3.20
+    command: sh -c "echo 'slow-exit working...'; sleep 10; exit 0"
+
+  fail-exit:
+    image: alpine:3.20
+    command: sh -c "echo 'about to fail'; exit 7"

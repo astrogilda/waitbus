@@ -1,0 +1,46 @@
+[Unit]
+Description=gh webhook forward for %I (CI status bridge)
+Documentation=https://github.com/astrogilda/waitbus/blob/main/SKILL.md
+After=waitbus-listener.service
+# BindsTo couples the forwarder's lifecycle to the listener: listener
+# stops → forwarder stops. Wants= here would form a default.target →
+# forward → listener → default.target ordering cycle.
+BindsTo=waitbus-listener.service
+
+[Service]
+Type=simple
+# Instance name encodes '/' as systemd's standard percent-escape sequence
+# '\x2f' (per systemd-escape(1)), so an instance such as
+# `waitbus-forward@org_dev\x2fmy_repo.service` decodes via %I to the
+# literal slug `org_dev/my_repo`. The earlier ${1/_//} convention only
+# replaced the first underscore, which mangled any owner or repo name
+# that itself contained an underscore.
+ExecStart=/bin/bash -c 'secret="$$(cat "$$CREDENTIALS_DIRECTORY"/github-webhook-secret)"; \
+    if [ -z "$$secret" ]; then echo "missing github-webhook-secret credential" >&2; exit 1; fi; \
+    exec gh webhook forward --repo="$$1" --events=workflow_run,workflow_job --url=http://127.0.0.1:9000/webhook --secret="$$secret"' _ %I
+LoadCredentialEncrypted=github-webhook-secret:/etc/credstore.encrypted/waitbus.github-webhook-secret.cred
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+# Sandboxing
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/gh
+# gh writes its token cache under ~/.config/gh; listener DB not needed here.
+MemoryDenyWriteExecute=true
+LimitNOFILE=1024
+UMask=0077
+Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8
+
+[Install]
+# Pull the forwarder in via listener.service.wants/, not via
+# default.target.wants/. The latter would form an ordering cycle.
+#
+# Enable an instance with (note the escaped slash):
+#   systemctl --user enable --now "waitbus-forward@$(systemd-escape <owner>/<repo>).service"
+# which produces e.g. `waitbus-forward@org_dev\x2fmy_repo.service`.
+WantedBy=waitbus-listener.service

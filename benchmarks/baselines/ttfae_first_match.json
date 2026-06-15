@@ -1,0 +1,233 @@
+{
+  "bench_name": "ttfae_first_match",
+  "waitbus_version": "0.5.0",
+  "started_at_ns": 1779243936477482995,
+  "ended_at_ns": 1779244046494890511,
+  "n_samples": 5000,
+  "n_warmup_discarded": 500,
+  "rate_hz": 100.0,
+  "percentiles_gc_enabled": {
+    "p50": {
+      "value_ns": 3074047,
+      "ci_low_ns": 3063807,
+      "ci_high_ns": 3082239,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 5103615,
+      "ci_low_ns": 5083135,
+      "ci_high_ns": 5132287,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 5894143,
+      "ci_low_ns": 5787647,
+      "ci_high_ns": 5967871,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "percentiles_gc_disabled": {
+    "p50": {
+      "value_ns": 4448255,
+      "ci_low_ns": 3831807,
+      "ci_high_ns": 4616191,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 5345279,
+      "ci_low_ns": 5320703,
+      "ci_high_ns": 5378047,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 6008831,
+      "ci_low_ns": 5955583,
+      "ci_high_ns": 6090751,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "clamp_stats_gc_enabled": {
+    "low": 0,
+    "high": 0
+  },
+  "clamp_stats_gc_disabled": {
+    "low": 0,
+    "high": 0
+  },
+  "environment": {
+    "hostname": "waitbus-bench-20260519-232017-112373e",
+    "python_version": "3.12.3",
+    "platform": "Linux 6.8.0-117-generic",
+    "cpu_model": "AMD EPYC-Milan Processor",
+    "cpu_governor": null,
+    "aslr_disabled": true,
+    "taskset_mask": "2,3",
+    "waitbus_version": "0.5.0",
+    "warnings": []
+  },
+  "extra": {
+    "smoke": false,
+    "scope_note": "single subscriber reused across iterations; await_predicate consumes one frame per match",
+    "per_source_gc_enabled": {
+      "github": {
+        "p50": {
+          "value_ns": 3074047,
+          "ci_low_ns": 3051519,
+          "ci_high_ns": 3092479
+        },
+        "p90": {
+          "value_ns": 5074943,
+          "ci_low_ns": 5038079,
+          "ci_high_ns": 5115903
+        },
+        "p99": {
+          "value_ns": 5861375,
+          "ci_low_ns": 5644287,
+          "ci_high_ns": 6086655
+        },
+        "n": 1250
+      },
+      "pytest": {
+        "p50": {
+          "value_ns": 3080191,
+          "ci_low_ns": 3059711,
+          "ci_high_ns": 3100671
+        },
+        "p90": {
+          "value_ns": 5124095,
+          "ci_low_ns": 5083135,
+          "ci_high_ns": 5193727
+        },
+        "p99": {
+          "value_ns": 5865471,
+          "ci_low_ns": 5627903,
+          "ci_high_ns": 5988351
+        },
+        "n": 1250
+      },
+      "docker": {
+        "p50": {
+          "value_ns": 3080191,
+          "ci_low_ns": 3061759,
+          "ci_high_ns": 3092479
+        },
+        "p90": {
+          "value_ns": 5099519,
+          "ci_low_ns": 5054463,
+          "ci_high_ns": 5173247
+        },
+        "p99": {
+          "value_ns": 5996543,
+          "ci_low_ns": 5644287,
+          "ci_high_ns": 6242303
+        },
+        "n": 1250
+      },
+      "fs": {
+        "p50": {
+          "value_ns": 3061759,
+          "ci_low_ns": 3041279,
+          "ci_high_ns": 3078143
+        },
+        "p90": {
+          "value_ns": 5107711,
+          "ci_low_ns": 5050367,
+          "ci_high_ns": 5148671
+        },
+        "p99": {
+          "value_ns": 5832703,
+          "ci_low_ns": 5525503,
+          "ci_high_ns": 5922815
+        },
+        "n": 1250
+      }
+    },
+    "per_source_gc_disabled": {
+      "github": {
+        "p50": {
+          "value_ns": 4456447,
+          "ci_low_ns": 3774463,
+          "ci_high_ns": 4706303
+        },
+        "p90": {
+          "value_ns": 5365759,
+          "ci_low_ns": 5312511,
+          "ci_high_ns": 5414911
+        },
+        "p99": {
+          "value_ns": 6098943,
+          "ci_low_ns": 5955583,
+          "ci_high_ns": 6139903
+        },
+        "n": 1250
+      },
+      "pytest": {
+        "p50": {
+          "value_ns": 4440063,
+          "ci_low_ns": 3624959,
+          "ci_high_ns": 4689919
+        },
+        "p90": {
+          "value_ns": 5304319,
+          "ci_low_ns": 5259263,
+          "ci_high_ns": 5345279
+        },
+        "p99": {
+          "value_ns": 5939199,
+          "ci_low_ns": 5799935,
+          "ci_high_ns": 6090751
+        },
+        "n": 1250
+      },
+      "docker": {
+        "p50": {
+          "value_ns": 4435967,
+          "ci_low_ns": 3700735,
+          "ci_high_ns": 4714495
+        },
+        "p90": {
+          "value_ns": 5378047,
+          "ci_low_ns": 5320703,
+          "ci_high_ns": 5410815
+        },
+        "p99": {
+          "value_ns": 6070271,
+          "ci_low_ns": 5947391,
+          "ci_high_ns": 6168575
+        },
+        "n": 1250
+      },
+      "fs": {
+        "p50": {
+          "value_ns": 4456447,
+          "ci_low_ns": 3643391,
+          "ci_high_ns": 4673535
+        },
+        "p90": {
+          "value_ns": 5337087,
+          "ci_low_ns": 5292031,
+          "ci_high_ns": 5382143
+        },
+        "p99": {
+          "value_ns": 5910527,
+          "ci_low_ns": 5849087,
+          "ci_high_ns": 5976063
+        },
+        "n": 1250
+      }
+    }
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

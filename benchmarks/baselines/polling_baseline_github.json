@@ -1,0 +1,87 @@
+{
+  "bench_name": "polling_baseline_github",
+  "waitbus_version": "0.5.0",
+  "started_at_ns": 1779244302184946670,
+  "ended_at_ns": 1779247604717470132,
+  "n_samples": 500,
+  "n_warmup_discarded": 50,
+  "rate_hz": 0.0,
+  "percentiles_gc_enabled": {
+    "p50": {
+      "value_ns": 1606418431,
+      "ci_low_ns": 1427111935,
+      "ci_high_ns": 1749024767,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.4563412653024843,
+      "p_high_eff": 0.5436587346975157
+    },
+    "p90": {
+      "value_ns": 2709520383,
+      "ci_low_ns": 2680160255,
+      "ci_high_ns": 2803892223,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8705780903680599,
+      "p_high_eff": 0.9233224372626984
+    },
+    "p99": {
+      "value_ns": 2977955839,
+      "ci_low_ns": 2912944127,
+      "ci_high_ns": 2992635903,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9768069002442693,
+      "p_high_eff": 0.9957212461034096
+    }
+  },
+  "percentiles_gc_disabled": {
+    "p50": {
+      "value_ns": 1559232511,
+      "ci_low_ns": 1482686463,
+      "ci_high_ns": 1696595967,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.4563412653024843,
+      "p_high_eff": 0.5436587346975157
+    },
+    "p90": {
+      "value_ns": 2732589055,
+      "ci_low_ns": 2648702975,
+      "ci_high_ns": 2787115007,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8705780903680599,
+      "p_high_eff": 0.9233224372626984
+    },
+    "p99": {
+      "value_ns": 2961178623,
+      "ci_low_ns": 2929721343,
+      "ci_high_ns": 2990538751,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9768069002442693,
+      "p_high_eff": 0.9957212461034096
+    }
+  },
+  "clamp_stats_gc_enabled": {
+    "low": 0,
+    "high": 0
+  },
+  "clamp_stats_gc_disabled": {
+    "low": 0,
+    "high": 0
+  },
+  "environment": {
+    "hostname": "waitbus-bench-20260519-232017-112373e",
+    "python_version": "3.12.3",
+    "platform": "Linux 6.8.0-117-generic",
+    "cpu_model": "AMD EPYC-Milan Processor",
+    "cpu_governor": null,
+    "aslr_disabled": true,
+    "taskset_mask": "2,3",
+    "waitbus_version": "0.5.0",
+    "warnings": []
+  },
+  "extra": {
+    "smoke": false,
+    "gh_polling_interval_s": 3.0,
+    "mock_port": 38167,
+    "scope_note": "emulates gh run watch --interval 3 polling cycle; no GitHub API or gh CLI invoked"
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

@@ -1,0 +1,121 @@
+{
+  "bench": "ttfae_github",
+  "what": "Cross-host p99 variance: identical code (one HEAD build) run on N freshly-provisioned Hetzner CCX23 instances, one canonical capture each, to characterize between-host benchmark variance.",
+  "code_commit": "identical HEAD across all hosts",
+  "server_type": "ccx23 (dedicated vCPU)",
+  "location": "fsn1",
+  "n_hosts": 8,
+  "p99_ms": {
+    "min": 5.009,
+    "median": 13.206,
+    "max": 13.418,
+    "mean": 10.207,
+    "stdev": 4.018
+  },
+  "distribution_shape": "bimodal \u2014 a fast cluster near 5ms and a slow cluster near 13.3ms, with no hosts between",
+  "fast_cluster_ms": [
+    5.009,
+    5.009,
+    5.042
+  ],
+  "slow_cluster_ms": [
+    13.14,
+    13.271,
+    13.345,
+    13.418,
+    13.418
+  ],
+  "cause_status": "VERIFIED via clock probe: reported cpu_model / NUMA / governor are identical across both clusters, but actual /proc/cpuinfo 'cpu MHz' differs (slow-tail hosts ran at 2400 MHz, the faster-tail host at 2197 MHz) -- the CCX23 'dedicated vCPU' SKU is served on physically heterogeneous hosts. Note: lower clock correlated with BETTER tail, so it is host-config/silicon heterogeneity, not a simple clock-speed effect.",
+  "per_host": [
+    {
+      "host_index": 1,
+      "p99_ms": 13.271,
+      "p50_ms": 7.754,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 2,
+      "p99_ms": 13.345,
+      "p50_ms": 7.864,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 3,
+      "p99_ms": 5.042,
+      "p50_ms": 2.861,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 4,
+      "p99_ms": 5.009,
+      "p50_ms": 2.863,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 5,
+      "p99_ms": 13.418,
+      "p50_ms": 7.803,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 6,
+      "p99_ms": 5.009,
+      "p50_ms": 2.884,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 7,
+      "p99_ms": 13.418,
+      "p50_ms": 7.86,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    },
+    {
+      "host_index": 8,
+      "p99_ms": 13.14,
+      "p50_ms": 7.786,
+      "cpu_model": "AMD EPYC-Milan Processor",
+      "numa_node_count": 1,
+      "n_samples": 5000
+    }
+  ],
+  "probe": {
+    "method": "per-box /proc/cpuinfo cpu MHz + lscpu + stepping alongside p99",
+    "observed": [
+      {
+        "p99_ms": 13.3,
+        "cpu_mhz": 2400
+      },
+      {
+        "p99_ms": 13.26,
+        "cpu_mhz": 2400
+      },
+      {
+        "p99_ms": 13.21,
+        "cpu_mhz": 2400
+      },
+      {
+        "p99_ms": 7.22,
+        "cpu_mhz": 2197
+      },
+      {
+        "p99_ms": 13.34,
+        "cpu_mhz": 2400
+      }
+    ],
+    "lesson": "Cloud 'dedicated vCPU' is not hardware-homogeneous. The spec sheet (model, vCPU, RAM) was identical across a 2.5x p99 tail difference; only a direct clock probe distinguished the hosts. Measure on multiple freshly-provisioned instances."
+  }
+}

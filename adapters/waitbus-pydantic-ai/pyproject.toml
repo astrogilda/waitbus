@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "waitbus-pydantic-ai"
+version = "0.1.0"
+description = "Pydantic AI tools for the waitbus workstation event bus: wait on bus predicates and emit agent events from an agent tool."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Sankalp Gilda", email = "sankalp.gilda@gmail.com" }]
+keywords = ["waitbus", "pydantic-ai", "agents", "event-bus"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "waitbus>=0.1.0,<0.2",
+  "pydantic-ai-slim>=1.104,<2",
+  "msgspec>=0.19,<1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/astrogilda/waitbus"
+Repository = "https://github.com/astrogilda/waitbus"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=1.4.0",
+  "pytest-cov>=7.1.0",
+  "mypy>=2.1.0",
+  "ruff>=0.15,<1.0",
+]
+
+# Development-time resolution: inside the waitbus repository the adapter
+# tests run against the checkout, not a published wheel. The published
+# package depends on waitbus from PyPI via the band above.
+[tool.uv.sources]
+waitbus = { path = "../..", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/waitbus_pydantic_ai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+filterwarnings = ["error::ResourceWarning"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src", "tests"]
+explicit_package_bases = true
+mypy_path = ["src", "tests"]
+
+[tool.coverage.run]
+source = ["waitbus_pydantic_ai"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

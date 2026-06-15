@@ -1,0 +1,115 @@
+{
+  "bench_name": "tokens_saved",
+  "started_at_ns": 1779254326120432378,
+  "ended_at_ns": 1779254327684865888,
+  "n_events": 10000,
+  "smoke": false,
+  "seed_counts": {
+    "github": 5000,
+    "pytest": 2000,
+    "docker": 2000,
+    "fs": 1000
+  },
+  "stats_output": {
+    "measured": {
+      "total_events": 10000,
+      "by_source": {
+        "github": 5000,
+        "docker": 2000,
+        "pytest": 2000,
+        "fs": 1000
+      },
+      "by_event_type": {
+        "workflow_run": 5000,
+        "docker_container": 2000,
+        "pytest_session": 2000,
+        "fs_change": 1000
+      },
+      "earliest_received_at_ns": 1779254326388946657,
+      "latest_received_at_ns": 1779254326388956656,
+      "span_seconds": 9.999e-06,
+      "caveats": [
+        "events_delivered is NOT a single counter: daemon-side it is proxied by waitbus_watermark_replay_events_total plus the waitbus_broadcast_send_seconds histogram.",
+        "subscription_uptime is NOT a counter: it is a Grafana-side rate derivation off the waitbus_subscriber_count / waitbus_broadcast_*_count gauges.",
+        "waitbus_db_inserted_total's DB-side equivalent is measured.total_events (COUNT(*)); the live counter itself lives in the daemon process.",
+        "waitbus_db_dedup_ignored_total is NOT recoverable from the events table (a deduped insert lands no row); read it from the listener's /metrics scrape, not here.",
+        "Live Prometheus counters are in-process to the daemons; scrape the listener's /metrics endpoint for their current values."
+      ]
+    },
+    "estimated": {
+      "_note": "per-source poll-cost assumptions, configurable via $WAITBUS_POLL_COST_<SOURCE>; defaults are weighted-average tokens-per-poll over a typical session, derived by scripts/derive_poll_costs.py",
+      "assumed_poll_interval_seconds": 15.0,
+      "per_source": [
+        {
+          "source": "github",
+          "per_poll_tokens": 48
+        },
+        {
+          "source": "pytest",
+          "per_poll_tokens": 29
+        },
+        {
+          "source": "docker",
+          "per_poll_tokens": 53
+        },
+        {
+          "source": "fs",
+          "per_poll_tokens": 21
+        }
+      ],
+      "stop_condition": "the polling agent stops once it observes the terminal event it is waiting on (one poll per observed event, not continuous polling)"
+    },
+    "computed": {
+      "_note": "deterministic product of measured.by_source x estimated.per_source[].per_poll_tokens; the aggregate is the exact sum of the per-source rows",
+      "model": "for each source s: polls_avoided[s] = events_observed[s]; modelled_savings_tokens[s] = polls_avoided[s] * per_poll_tokens[s]; aggregate = sum over s",
+      "per_source": [
+        {
+          "source": "github",
+          "events_observed": 5000,
+          "per_poll_tokens": 48,
+          "polls_avoided": 5000,
+          "modelled_savings_tokens": 240000
+        },
+        {
+          "source": "pytest",
+          "events_observed": 2000,
+          "per_poll_tokens": 29,
+          "polls_avoided": 2000,
+          "modelled_savings_tokens": 58000
+        },
+        {
+          "source": "docker",
+          "events_observed": 2000,
+          "per_poll_tokens": 53,
+          "polls_avoided": 2000,
+          "modelled_savings_tokens": 106000
+        },
+        {
+          "source": "fs",
+          "events_observed": 1000,
+          "per_poll_tokens": 21,
+          "polls_avoided": 1000,
+          "modelled_savings_tokens": 21000
+        }
+      ],
+      "aggregate_polls_avoided": 10000,
+      "aggregate_modelled_savings_tokens": 425000
+    }
+  },
+  "environment": {
+    "hostname": "cronus",
+    "python_version": "3.14.3",
+    "platform": "Linux 6.17.0-29-generic",
+    "cpu_model": "Intel(R) Core(TM) Ultra 7 155H",
+    "cpu_governor": "powersave",
+    "aslr_disabled": false,
+    "taskset_mask": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21",
+    "waitbus_version": "0.5.0",
+    "warnings": [
+      "cpu governor is 'powersave', not 'performance'; set via `sudo cpupower frequency-set -g performance` for stable measurements.",
+      "ASLR is enabled (randomize_va_space='2'); disable for canonical baselines via `echo 0 | sudo tee /proc/sys/kernel/randomize_va_space`.",
+      "CPU affinity covers 22 cores; pin to 2 isolated cores via `taskset -c 2,3 python -m benchmarks.bench_*` for canonical baselines."
+    ]
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

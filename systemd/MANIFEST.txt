@@ -1,0 +1,16 @@
+# waitbus systemd-user unit manifest
+# Canonical list of unit files the package ships. `waitbus install-systemd
+# --sync` reads this to detect orphans in ~/.config/systemd/user/ that
+# previous package versions installed but the current version no longer
+# needs (e.g., the Honker FUT, when it triggers, removes the broadcast
+# units; --sync will surface and offer to remove them).
+#
+# Format: one filename per line, '#' comments allowed.
+waitbus-listener.service
+waitbus-broadcast.socket
+waitbus-broadcast.service
+waitbus-etag-poll.service
+waitbus-etag-poll.timer
+waitbus-watchdog.service
+waitbus-watchdog.timer
+waitbus-forward@.service

@@ -1,0 +1,5 @@
+# Committed benchmark baselines are generated measurement artifacts. Mark
+# them so GitHub excludes them from repository language statistics and
+# collapses them in pull-request diffs; textual diffs stay available on
+# expand (these are JSON, not binary).
+benchmarks/baselines/*.json linguist-generated

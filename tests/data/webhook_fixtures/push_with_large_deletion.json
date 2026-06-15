@@ -1,0 +1,110 @@
+{
+  "ref": "refs/heads/main",
+  "before": "1111111111111111111111111111111111111111",
+  "after": "2222222222222222222222222222222222222222",
+  "repository": {
+    "id": 123456789,
+    "node_id": "R_waitbus_demo",
+    "name": "waitbus-demo-fixture",
+    "full_name": "astrogilda/waitbus-demo-fixture",
+    "private": false,
+    "owner": {
+      "login": "astrogilda",
+      "id": 99000001,
+      "type": "User"
+    },
+    "html_url": "https://github.com/astrogilda/waitbus-demo-fixture",
+    "description": "fixture repo for waitbus test corpus",
+    "fork": false,
+    "url": "https://api.github.com/repos/astrogilda/waitbus-demo-fixture",
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "<redacted>",
+    "email": "<redacted>"
+  },
+  "sender": {
+    "login": "astrogilda",
+    "id": 99000001,
+    "type": "User"
+  },
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/astrogilda/waitbus-demo-fixture/compare/1111111111...2222222222",
+  "commits": [
+    {
+      "id": "2222222222222222222222222222222222222222",
+      "tree_id": "3333333333333333333333333333333333333333",
+      "distinct": true,
+      "message": "<redacted-commit-message>",
+      "timestamp": "2025-06-01T14:00:00Z",
+      "url": "https://github.com/astrogilda/waitbus-demo-fixture/commit/2222222222222222222222222222222222222222",
+      "author": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+      "committer": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+      "added": [],
+      "removed": [
+        "legacy/module_a.py",
+        "legacy/module_b.py",
+        "legacy/module_c.py",
+        "legacy/module_d.py",
+        "legacy/module_e.py",
+        "legacy/module_f.py",
+        "legacy/module_g.py",
+        "legacy/module_h.py",
+        "legacy/module_i.py",
+        "legacy/module_j.py",
+        "legacy/module_k.py",
+        "legacy/module_l.py",
+        "legacy/module_m.py",
+        "legacy/module_n.py",
+        "legacy/module_o.py",
+        "legacy/module_p.py",
+        "legacy/module_q.py",
+        "legacy/module_r.py",
+        "legacy/module_s.py",
+        "legacy/module_t.py",
+        "legacy/__init__.py",
+        "legacy/README.md"
+      ],
+      "modified": []
+    }
+  ],
+  "head_commit": {
+    "id": "2222222222222222222222222222222222222222",
+    "tree_id": "3333333333333333333333333333333333333333",
+    "distinct": true,
+    "message": "<redacted-commit-message>",
+    "timestamp": "2025-06-01T14:00:00Z",
+    "url": "https://github.com/astrogilda/waitbus-demo-fixture/commit/2222222222222222222222222222222222222222",
+    "author": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+    "committer": {"name": "<redacted>", "email": "<redacted>", "username": "<redacted>"},
+    "added": [],
+    "removed": [
+      "legacy/module_a.py",
+      "legacy/module_b.py",
+      "legacy/module_c.py",
+      "legacy/module_d.py",
+      "legacy/module_e.py",
+      "legacy/module_f.py",
+      "legacy/module_g.py",
+      "legacy/module_h.py",
+      "legacy/module_i.py",
+      "legacy/module_j.py",
+      "legacy/module_k.py",
+      "legacy/module_l.py",
+      "legacy/module_m.py",
+      "legacy/module_n.py",
+      "legacy/module_o.py",
+      "legacy/module_p.py",
+      "legacy/module_q.py",
+      "legacy/module_r.py",
+      "legacy/module_s.py",
+      "legacy/module_t.py",
+      "legacy/__init__.py",
+      "legacy/README.md"
+    ],
+    "modified": []
+  }
+}

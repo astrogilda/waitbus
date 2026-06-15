@@ -1,0 +1,18 @@
+[Unit]
+Description=waitbus broadcast hub socket
+
+[Socket]
+# %t resolves to $XDG_RUNTIME_DIR (typically /run/user/$UID); the
+# RuntimeDirectory= directive tells systemd to create the per-user
+# `waitbus` subdir with the correct ownership and 0700 mode before
+# binding the socket. RuntimeDirectoryPreserve=yes keeps the dir alive
+# across socket-unit restarts so subscribers do not see EBADF on a
+# broadcast service bounce.
+ListenStream=%t/waitbus/broadcast.sock
+RuntimeDirectory=waitbus
+RuntimeDirectoryPreserve=yes
+SocketMode=0600
+PassCredentials=yes
+
+[Install]
+WantedBy=sockets.target

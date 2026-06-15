@@ -1,0 +1,85 @@
+{
+  "bench_name": "ttfae_fs",
+  "waitbus_version": "0.5.0",
+  "started_at_ns": 1779243823696019688,
+  "ended_at_ns": 1779243933711357966,
+  "n_samples": 5000,
+  "n_warmup_discarded": 500,
+  "rate_hz": 100.0,
+  "percentiles_gc_enabled": {
+    "p50": {
+      "value_ns": 4677631,
+      "ci_low_ns": 4648959,
+      "ci_high_ns": 4710399,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 5308415,
+      "ci_low_ns": 5287935,
+      "ci_high_ns": 5324799,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 5955583,
+      "ci_low_ns": 5918719,
+      "ci_high_ns": 6004735,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "percentiles_gc_disabled": {
+    "p50": {
+      "value_ns": 5038079,
+      "ci_low_ns": 5029887,
+      "ci_high_ns": 5050367,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.48614628258320963,
+      "p_high_eff": 0.5138537174167904
+    },
+    "p90": {
+      "value_ns": 5459967,
+      "ci_low_ns": 5435391,
+      "ci_high_ns": 5488639,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.8913750184255399,
+      "p_high_eff": 0.9080108200184146
+    },
+    "p99": {
+      "value_ns": 6115327,
+      "ci_low_ns": 6074367,
+      "ci_high_ns": 6201343,
+      "ci_z": 1.959963984540054,
+      "p_low_eff": 0.9868414249077906,
+      "p_high_eff": 0.9924062271860534
+    }
+  },
+  "clamp_stats_gc_enabled": {
+    "low": 0,
+    "high": 0
+  },
+  "clamp_stats_gc_disabled": {
+    "low": 0,
+    "high": 0
+  },
+  "environment": {
+    "hostname": "waitbus-bench-20260519-232017-112373e",
+    "python_version": "3.12.3",
+    "platform": "Linux 6.8.0-117-generic",
+    "cpu_model": "AMD EPYC-Milan Processor",
+    "cpu_governor": null,
+    "aslr_disabled": true,
+    "taskset_mask": "2,3",
+    "waitbus_version": "0.5.0",
+    "warnings": []
+  },
+  "extra": {
+    "smoke": false,
+    "scope_note": "measures emit-to-recv; excludes watchdog kernel detection latency"
+  },
+  "capture_note": "Frozen historical capture; version field reflects the pre-rename/pre-renumber project version (waitbus 0.5.0). Regenerate on the canonical bench hardware to refresh under waitbus 0.1.0."
+}

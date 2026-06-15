@@ -1,0 +1,428 @@
+name: waitbus CI
+
+on:
+  pull_request:
+  push:
+    # Trigger on direct pushes to main so commits that bypass the
+    # pull-request path still run the test matrix.  A bare pull-request
+    # trigger leaves the gate open whenever the operator merges
+    # locally and pushes; the concurrency block below keys on
+    # github.ref so a push that arrives during a PR run cancels the
+    # older run rather than double-billing.
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Tests (py${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # waitbus advertises requires-python >=3.11, so the test suite runs on
+        # every advertised version. The Python-version surface is OS-
+        # independent (pure library + listener logic), so all three run on
+        # cheap ubuntu-latest runners; macos-14 (the launchd port + cross-
+        # platform surfaces) runs only the newest, because macOS bills ~10x
+        # the Linux per-minute rate on private repos. Lint and mypy run once
+        # on the canonical ubuntu+3.13 cell (see their `if:` guards below);
+        # every cell finishes in well under five minutes.
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: macos-14
+            python-version: "3.13"
+
+    env:
+      # Single source of truth for OS-keyed gating. Every Linux-only
+      # gate keys on one of these two vars -- never on the literal
+      # runner label -- so a runner-image rename (e.g. ubuntu-latest ->
+      # ubuntu-24.04) keeps the gates armed instead of silently
+      # disarming them with a green check.
+      #
+      # COVERAGE_HOST: which matrix cells enforce coverage and dogfood
+      # pytest emission (every Linux cell).
+      # CANONICAL_CELL: the single ubuntu+3.13 cell that runs the
+      # version-agnostic gates (pre-commit, mypy) exactly once.
+      COVERAGE_HOST: ${{ contains(matrix.os, 'ubuntu') && '1' || '' }}
+      CANONICAL_CELL: ${{ contains(matrix.os, 'ubuntu') && matrix.python-version == '3.13' && '1' || '' }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: ${{ matrix.python-version }}
+          # --all-extras pulls the bench/stress/soak optional-dependency
+          # extras (scipy, numpy, hdrh, ...). The full tests/ suite includes
+          # the benchmark tests, which import those extras directly; syncing
+          # groups alone left them ModuleNotFound and failed the cell.
+          sync-args: "--all-groups --all-extras"
+
+      - name: Run pre-commit hooks (all files, all hooks)
+        # Version-agnostic gate (lint / format / manifest / complexity); run
+        # once on the canonical cell, not redundantly across the version matrix.
+        if: env.CANONICAL_CELL == '1'
+        # Single CI gate covering ruff-check, ruff-format, check-manifest,
+        # and every waitbus local hook (sync-versions,
+        # derive-poll-costs-against, complexity-ratchet, commit-msg
+        # jargon).  Closes the SKIP=*/--no-verify bypass surface that
+        # the prior per-step lint pattern could not catch.  prek reads
+        # the same .pre-commit-config.yaml the pre-commit framework
+        # would; uvx pulls the prek binary on demand.
+        run: uvx prek run --all-files --show-diff-on-failure --color=always
+
+      - name: Type check (mypy)
+        # mypy pins python_version=3.11 in pyproject, so its result is identical
+        # across runtime versions; run once on the canonical cell.
+        if: env.CANONICAL_CELL == '1'
+        run: uv run mypy
+
+      - name: Run tests with coverage (with waitbus self-dogfooding on Linux)
+        # The pytest_emit plugin is loaded unconditionally; it is a no-op
+        # unless --waitbus-emit (or WAITBUS_PYTEST_EMIT=1) is also set. We
+        # only opt-in on Linux because the broadcast daemon is Linux-only;
+        # macOS runners exercise the same test surface without the
+        # dogfood emission.
+        #
+        # Use `coverage run -m pytest` rather than pytest-cov. The
+        # `-p waitbus.sources.pytest_emit` plugin is loaded during pytest's
+        # early plugin-load phase, which imports the waitbus package BEFORE
+        # pytest-cov would start tracing -- so every import-time line went
+        # uncounted and silently tanked per-file coverage (e.g. _types.py read
+        # 5% instead of 92%). `coverage run` traces from interpreter entry, so
+        # those plugin-load imports are measured.
+        env:
+          WAITBUS_PYTEST_EMIT: ${{ env.COVERAGE_HOST }}
+        run: >-
+          uv run coverage run --source=waitbus -m pytest tests/
+          -p no:xdist
+          -p waitbus.sources.pytest_emit
+          --waitbus-db /tmp/waitbus-ci.db
+          -vv
+
+      - name: Coverage report + JSON
+        # Linux-only. Both coverage gates -- this aggregate report and the
+        # per-file gate below -- are intentionally Linux-only: macOS skips the
+        # Linux-only broadcast/eventfd/schedstat surface, so its aggregate
+        # (~78%) is not comparable and the per-file gate is not run there.
+        # macOS only needs the test step above to pass; it consumes no
+        # coverage.json. (Both `coverage report` AND `coverage json` honor the
+        # pyproject fail_under, so the whole step must be gated, not just the
+        # report line.)
+        if: env.COVERAGE_HOST == '1'
+        # No `test -s coverage.json` here: the per-file gate below asserts
+        # the file's presence with a loud diagnostic, and one assertion is
+        # the single source of truth for that failure.
+        run: |
+          uv run coverage json -o coverage.json
+          uv run coverage report
+
+      - name: Append waitbus stats to job summary (Linux only)
+        if: env.COVERAGE_HOST == '1' && always()
+        # `waitbus stats --json` reads the dogfood DB read-only and prints
+        # MEASURED event counts plus ESTIMATED tokens-saved (with the
+        # assumptions printed alongside, never as a bare $X claim per
+        # the design contract). Pipe into the job summary so a reviewer
+        # can see how many events the test suite produced.
+        run: |
+          set -euo pipefail
+          if [[ -f /tmp/waitbus-ci.db ]]; then
+            stats_out="$(mktemp)"
+            stats_err="$(mktemp)"
+            if uv run waitbus stats --json --db /tmp/waitbus-ci.db >"$stats_out" 2>"$stats_err"; then
+              {
+                echo '## waitbus self-dogfood stats'
+                echo ''
+                echo '```json'
+                cat "$stats_out"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              rc=$?
+              {
+                echo '## waitbus self-dogfood stats (FAILED)'
+                echo ''
+                echo "exit code: $rc"
+                echo ''
+                echo '```'
+                cat "$stats_err"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+            rm -f "$stats_out" "$stats_err"
+          else
+            echo "waitbus dogfood DB absent (no events captured)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Per-file coverage gate
+        # Linux-only: macOS skips the Linux-only broadcast/eventfd/schedstat
+        # surface, so its per-file coverage profile is not comparable.
+        if: env.COVERAGE_HOST == '1'
+        # Fails if any single source file is below 80% statement coverage.
+        # Excluded files are justified in scripts/coverage_per_file.py
+        # (see the JUSTIFIED_EXCLUSIONS docstring table in that script).
+        # Ratchet the integration-surface exclusions by ~5%/cycle:
+        #   - _peercred.py / cli/install/launchd.py: macOS-only branches;
+        #     remove once a combined Linux+macOS coverage profile is used.
+        #   - mcp.py: reconnect loop and session tear-down tests needed.
+        #   - pr_monitor.py: GitHub API mock tests needed.
+        #   - read_events.py: live daemon socket tests needed.
+        #   - broadcast_tap.py / replay.py: error-path tests needed
+        #     (ConnectionError, timeout, SIGINT).
+        #   - cli/_shared.py / cli/status.py / cli/daemons/* / cli/replay.py:
+        #     CLI integration test pass needed (subprocess-level typer).
+        #   - _protocols.py: structural Protocol module; branch coverage
+        #     counts unreachable branches inside `def x(): ...` stubs.
+        #     Statement coverage is 100%; excluded until coverage.py grows
+        #     a "no-branch" annotation for Protocol bodies.
+        run: |
+          test -s coverage.json || { echo 'coverage.json missing or empty: the coverage run did not execute on this cell' >&2; exit 1; }
+          uv run python scripts/coverage_per_file.py coverage.json \
+            --exclude waitbus/_peercred.py \
+            --exclude waitbus/_protocols.py \
+            --exclude waitbus/mcp.py \
+            --exclude waitbus/pr_monitor.py \
+            --exclude waitbus/read_events.py \
+            --exclude waitbus/broadcast_tap.py \
+            --exclude waitbus/replay.py \
+            --exclude waitbus/cli/_shared.py \
+            --exclude waitbus/cli/status.py \
+            --exclude waitbus/cli/install/launchd.py \
+            --exclude waitbus/cli/daemons/broadcast.py \
+            --exclude waitbus/cli/daemons/mcp.py \
+            --exclude waitbus/cli/daemons/read_events.py \
+            --exclude waitbus/cli/replay.py
+
+      - name: Structural lints (systemd + artifact hygiene)
+        # These modules also run inside the main pytest invocation above;
+        # the dedicated step exists so a CI dashboard surfaces the
+        # structural-lint signal independently of the broader suite.
+        run: >-
+          uv run pytest
+          tests/test_systemd_units.py
+          tests/test_artifact_hygiene.py
+          -p no:xdist -v
+
+      - name: Version-drift guard
+        run: uv run python scripts/sync-versions.py --check
+      # systemd-analyze verify of the shipped units is exercised by
+      # tests/test_install.py::test_shipped_units_pass_systemd_analyze
+      # against the wheel-installed binaries (the unit ExecStart paths
+      # only resolve once the package is installed); no separate step
+      # needed here.
+
+      - name: Capture --show-completion diagnostics (macOS only)
+        if: runner.os == 'macOS'
+        # Evidence-gathering for the deferred macOS completion failure: the
+        # four test_cli_completion tests are skipif(darwin) because typer's
+        # --show-completion exits non-zero under the runner's shell setup
+        # and the root cause was never captured (the prior failure logs were
+        # drowned in unrelated noise). This step never fails the build; it
+        # records exit code, stdout, and stderr per shell dialect in the job
+        # summary so the next session can root-cause from real evidence and
+        # convert the skips to a fix or a precise xfail.
+        run: |
+          {
+            echo '## waitbus --show-completion diagnostics (macOS)'
+            for sh in bash zsh fish; do
+              echo ''
+              echo "### SHELL=$sh"
+              out="$(mktemp)"; err="$(mktemp)"
+              rc=0
+              env SHELL="/bin/$sh" uv run waitbus --show-completion >"$out" 2>"$err" || rc=$?
+              echo "exit code: $rc"
+              echo '```'
+              echo '--- stdout (first 20 lines) ---'
+              head -20 "$out"
+              echo '--- stderr ---'
+              cat "$err"
+              echo '```'
+              rm -f "$out" "$err"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke-test install-launchd (macOS only)
+        if: runner.os == 'macOS'
+        # Exercise the macOS install path end-to-end on every PR. The
+        # --no-enable flag avoids loading the agents on the runner
+        # (which would leak between job steps); plutil -lint validates
+        # every resolved plist as well-formed plist XML.
+        run: |
+          uv run waitbus install-launchd --no-enable
+          for p in "$HOME/Library/LaunchAgents/"dev.waitbus.*.plist; do
+            echo "Validating $p"
+            plutil -lint "$p"
+          done
+
+      - name: Dry-run launchd install (macOS only)
+        if: runner.os == 'macOS'
+        # Exercises the plist template renderer without writing any files or
+        # invoking launchctl. Fails fast if placeholder substitution is broken.
+        run: uv run waitbus install-launchd --dry-run
+
+      - name: Lint shipped launchd plists (macOS only)
+        if: runner.os == 'macOS'
+        # Validates the source plist files in installers/launchd/ as well-formed
+        # plist XML on the actual macOS runner (plutil is macOS-only; this step
+        # cannot run on Linux).
+        run: |
+          for p in installers/launchd/dev.waitbus.*.plist; do
+            echo "Linting $p"
+            plutil -lint "$p"
+          done
+
+  adapters:
+    # The adapter packages under adapters/ are standalone uv projects that
+    # pin waitbus as an editable path dependency; the main `python` job's
+    # suite never collects them. Without this job their ~4.7k lines
+    # (including end-to-end tests) would rot silently until the PyPI
+    # publish. Mirrors scripts/run_adapter_tests.sh, one matrix leg per
+    # package so a failure names the adapter directly. Offline tests
+    # (fake models), ubuntu + the newest Python is sufficient — the
+    # adapters inherit waitbus's own version matrix through the editable
+    # path dependency exercised in the main job.
+    name: Adapter tests (${{ matrix.adapter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [waitbus-pydantic-ai, waitbus-langgraph]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.10.8" # pin: uv 0.11.x prunes dev tools out of the venv on `uv run`
+
+      - name: Sync adapter environment
+        run: uv sync --directory "adapters/${{ matrix.adapter }}" --all-groups
+
+      - name: Run adapter test suite
+        run: uv run --directory "adapters/${{ matrix.adapter }}" python -m pytest -vv
+
+  reproducibility:
+    # Mirror the release.yml `reproducibility-check` job at PR time so
+    # build-determinism regressions surface before they reach a tag.
+    # Pinned SOURCE_DATE_EPOCH against the merge-base commit; two
+    # consecutive builds must produce byte-identical sdist + wheel.
+    name: Reproducible-build gate (byte-identical sdist + wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.10.8" # pin: uv 0.11.x prunes dev tools out of the venv on `uv run`
+
+      - name: Build #1 (sdist + wheel)
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          uv build --sdist --wheel --out-dir /tmp/build1
+
+      - name: Build #2 (sdist + wheel)
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          uv build --sdist --wheel --out-dir /tmp/build2
+
+      - name: Assert sdist + wheel byte-identical
+        run: |
+          diff -s \
+            <(sha256sum /tmp/build1/waitbus-*.tar.gz | cut -d' ' -f1) \
+            <(sha256sum /tmp/build2/waitbus-*.tar.gz | cut -d' ' -f1)
+          diff -s \
+            <(sha256sum /tmp/build1/waitbus-*.whl | cut -d' ' -f1) \
+            <(sha256sum /tmp/build2/waitbus-*.whl | cut -d' ' -f1)
+
+  server-json:
+    # Validate the MCP Registry manifest (server.json) against its
+    # declared `$schema` URL on every PR so a malformed manifest never
+    # reaches the publish-mcp-registry job in release.yml. Uses uv's
+    # one-shot tool runner against the pinned check-jsonschema release
+    # rather than a GitHub Action so the toolchain stays uv-driven and
+    # avoids a third-party action in the supply chain.
+    name: server.json schema validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.10.8" # pin: uv 0.11.x prunes dev tools out of the venv on `uv run`
+
+      - name: Validate server.json against its declared $schema
+        run: >-
+          uv tool run --from check-jsonschema==0.33.0
+          check-jsonschema
+          --schemafile https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
+          server.json
+
+  canary-mcp-sdk:
+    # Forward-compat canary against the immediately-prior `mcp` SDK
+    # releases. The current range (`mcp>=1.27.1,<1.28`) is exercised
+    # by the main `python` job; this matrix runs the MCP wire fixtures
+    # against the previous patch and the previous minor so a future
+    # range-bump (or a forced rollback) can ship with empirical
+    # confidence that the two-tier fixture still matches the SDK's
+    # emission shape.
+    #
+    # Add a new matrix entry whenever a new `mcp` minor or patch
+    # ships; drop the oldest entry once the project's compat window
+    # shifts forward (target: keep the previous two releases).
+    name: MCP SDK canary (${{ matrix.mcp-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mcp-version: ["1.26.0", "1.27.0"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-groups"
+
+      - name: Override mcp pin to canary version
+        # Force-install the canary version into the synced venv. The
+        # project's normal range is `mcp>=1.27.1,<1.28`; this step
+        # overrides that for the canary matrix only (the venv is
+        # discarded at job end).
+        run: uv pip install --reinstall "mcp==${{ matrix.mcp-version }}"
+
+      - name: MCP wire tests under canary version
+        # Tier 1 (regression vs `_mcp_wire.py` baseline) + Tier 2
+        # (channels-reference spec anchor) — these are the two
+        # contracts a future SDK bump must preserve. If they pass at
+        # the older version they remain stable across the bump
+        # window.
+        run: uv run pytest tests/test_mcp.py -vv -p no:xdist
+
+      - name: Protocol-version-range invariant under canary version
+        # The PROTOCOL_VERSIONS_SUPPORTED tuple must remain non-empty
+        # and `PROTOCOL_VERSION == PROTOCOL_VERSIONS_SUPPORTED[-1]`
+        # must still hold; the canary cell verifies this against the
+        # canary SDK's published `SUPPORTED_PROTOCOL_VERSIONS`.
+        run: >-
+          uv run python -c
+          "from waitbus._mcp_constants import PROTOCOL_VERSION, PROTOCOL_VERSIONS_SUPPORTED;
+          assert len(PROTOCOL_VERSIONS_SUPPORTED) > 0;
+          assert PROTOCOL_VERSION == PROTOCOL_VERSIONS_SUPPORTED[-1];
+          print(f'canary {PROTOCOL_VERSION!r} from tuple {PROTOCOL_VERSIONS_SUPPORTED!r}')"

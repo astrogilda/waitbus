@@ -1,0 +1,62 @@
+name: soak-smoke
+
+# Short longevity smoke for the broadcast daemon, run on every merge to main
+# (and on PRs that touch the daemon). It is NOT the release gate: the canonical
+# 24h Hetzner CCX23 soak (scripts/run_soak_on_hetzner.sh) remains the baseline.
+# This catches a gross RSS/fd leak the moment it lands rather than only at the
+# next manual 24h run -- the daemon control flow changes often enough (cursor,
+# watermark, spawner-death watch, the daemon-assigned sequence) that "re-run the
+# 24h soak by hand" was the only longevity signal, and it lagged merges.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "waitbus/**"
+      - "scripts/soak/**"
+      - ".github/workflows/soak-smoke.yml"
+  pull_request:
+    paths:
+      - "waitbus/broadcast.py"
+      - "waitbus/_db.py"
+      - "waitbus/_doorbell.py"
+      - "scripts/soak/**"
+      - ".github/workflows/soak-smoke.yml"
+
+concurrency:
+  group: soak-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  soak-smoke:
+    name: Broadcast daemon soak smoke (short)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up waitbus environment
+        uses: ./.github/actions/setup-waitbus-env
+        with:
+          python-version: "3.13"
+          sync-args: "--all-groups"
+      - name: Run short soak (RSS/fd flatness)
+        run: |
+          # 90 s at a 5 s cadence is ~18 RSS/fd samples -- enough to detect an
+          # unbounded daemon leak. Thresholds are deliberately looser than the
+          # 24h baseline (a short run has more startup-allocation noise per
+          # sample); the job exits non-zero when overall_passed is false.
+          uv run python -m scripts.soak._main \
+            --duration-seconds 90 \
+            --sample-interval-seconds 5 \
+            --rss-growth-threshold-mb 25 \
+            --fd-growth-threshold 8 \
+            --emit-rate-hz 50 \
+            --verdict-json /tmp/soak_smoke_verdict.json
+      - name: Upload soak smoke verdict
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: soak-smoke-verdict
+          path: /tmp/soak_smoke_verdict.json
