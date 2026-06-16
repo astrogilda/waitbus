@@ -601,7 +601,7 @@ agent-recipes = [
 # wrapper uses `uv sync --all-groups` to pick this up explicitly. NEVER in
 # the wheel / `pip install waitbus`.
 agent-recipes-real = [
-  "pydantic-ai-slim[openai]>=1.104,<2",
+  "pydantic-ai-slim[openai]>=1.107.0,<2",
   "langchain-openai>=1.0,<2",
 ]
 
