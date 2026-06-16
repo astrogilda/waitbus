@@ -10,6 +10,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.1]
+
+### Added
+
+- MCP Registry listing: the package-ownership metadata (`mcp-name`) is now
+  carried in the project README so `waitbus` can be discovered and installed
+  through the Model Context Protocol registry. No code or API changes.
+
 ## [0.1.0] — first public release
 
 waitbus is a workstation-local async event bus for your machine's agents:

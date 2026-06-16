@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.astrogilda/waitbus -->
+
 # waitbus — the workstation-local, cross-harness status bus: D-Bus for agents, with a replay log and a wait primitive
 
 [![CI](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml/badge.svg)](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml)
