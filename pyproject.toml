@@ -45,13 +45,13 @@ dependencies = [
   # / refactor 0a22a9d). When that release lands on PyPI, bump this pin
   # (e.g. `mcp>=1.28,<2.0`) and delete the WaitbusServer subclass in
   # waitbus/mcp.py (see the docstring there for removal criteria).
-  "mcp>=1.27.1,<1.28",
+  "mcp>=1.27.2,<1.28",
   "msgspec>=0.19,<1.0",
-  "platformdirs>=4.9,<5.0",
+  "platformdirs>=4.10.0,<5.0",
   "prometheus_client>=0.20,<1.0",
   "pydantic-settings>=2.6,<3.0",
   "stamina>=26.1.0",
-  "typer>=0.15,<1.0",
+  "typer>=0.26.7,<1.0",
 ]
 
 # Consumer-facing optional features. NOT dev tooling — dev tools live
@@ -64,7 +64,7 @@ dependencies = [
 # anti-pattern — and is imported lazily so the base install is
 # unaffected by it just as it is by duckdb.
 [project.optional-dependencies]
-analyze = ["duckdb>=1.1,<2.0"]
+analyze = ["duckdb>=1.5.3,<2.0"]
 fs = ["watchdog>=4.0,<7.0"]
 # `stress` enables `waitbus stress`, the user-facing concurrency-knee
 # probe + slow-consumer + zero-polling diagnostic. scipy is the
@@ -89,10 +89,10 @@ stress = ["scipy>=1.15,<2.0"]
 # poll-cost derivation script and the bench's uniform-tokeniser
 # comparison column. HdrHistogram is the percentile recorder.
 bench = [
-  "hdrhistogram>=0.10,<1.0",
+  "hdrhistogram>=0.10.7,<1.0",
   "tiktoken>=0.7,<1.0",
-  "openai>=2.0,<3.0",
-  "langchain-openai>=1.0,<2.0",
+  "openai>=2.41.1,<3.0",
+  "langchain-openai>=1.3.2,<2.0",
   "langchain-core>=1.4,<2.0",
   # packaging backs the canonical-versions gate in
   # benchmarks/_bench_preflight.py (PEP 440 SpecifierSet / Version band
@@ -135,7 +135,7 @@ plugin-verify = ["pypi-attestations>=0.0.29,<0.0.31"]
 # benchmark dependency closure to do so. The `hdrhistogram` PyPI
 # package installs the `hdrh` module that benchmarks/_harness.py
 # imports lazily.
-soak = ["hdrhistogram>=0.10,<1.0"]
+soak = ["hdrhistogram>=0.10.7,<1.0"]
 
 [project.urls]
 Homepage = "https://github.com/astrogilda/waitbus"
@@ -529,7 +529,7 @@ dev = [
   "build>=1.2",
   "check-manifest>=0.51",
   "freezegun>=1.5.5",
-  "hypothesis>=6.152.6",
+  "hypothesis>=6.155.3",
   "mypy>=2.1.0",
   # prek is the canonical Rust-based git-hook manager (drop-in
   # alternative to the pre-commit framework). Operators and CI
@@ -542,7 +542,7 @@ dev = [
   # bespoke size-only cache validation. Maintainer-only path; not a
   # runtime dep.
   "pooch>=1.9",
-  "pytest>=8.0",
+  "pytest>=9.1.0",
   # 1.4.0 floor: 1.3.0's _temporary_event_loop_policy probes
   # asyncio.get_event_loop(), which on Python 3.13 lazily creates an
   # event loop (+ its self-pipe socketpair) when none is current and
@@ -558,7 +558,7 @@ dev = [
   # silently pass under whatever env-var residue prior tests leak.
   "pytest-randomly>=3.15",
   "pytest-xdist>=3.5",
-  "ruff>=0.15,<1.0",
+  "ruff>=0.15.17,<1.0",
   # tiktoken backs scripts/derive_poll_costs.py (used by the
   # `derive-poll-costs-against` pre-commit hook to validate the
   # DEFAULT_POLL_COST_* constants in waitbus/stats.py against
@@ -586,8 +586,8 @@ dev = [
 # tests run fully offline with no LLM network calls. langchain-core is pinned
 # explicitly for the fake-chat-model import even though langgraph pulls it.
 agent-recipes = [
-  "pydantic-ai-slim>=1.104,<2",
-  "langgraph>=1.2,<2",
+  "pydantic-ai-slim>=1.107.0,<2",
+  "langgraph>=1.2.5,<2",
   "langchain-core>=1.4,<2",
 ]
 # Real-LLM provider SDKs needed when bench_multistream_proof / bench_polling_vs_subscribe_llm_agent
@@ -602,7 +602,7 @@ agent-recipes = [
 # the wheel / `pip install waitbus`.
 agent-recipes-real = [
   "pydantic-ai-slim[openai]>=1.104,<2",
-  "langchain-openai>=1.0,<2",
+  "langchain-openai>=1.3.2,<2",
 ]
 
 [[tool.mypy.overrides]]
