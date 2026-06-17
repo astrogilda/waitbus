@@ -226,6 +226,129 @@ def test_install_credentials_no_enable_listener_flag_skips_enable(
     assert run_mock.call_count == 0
 
 
+def test_install_credentials_corrupt_existing_secrets_file(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """A non-JSON existing secrets.json is rejected with a clear error, not a crash."""
+    path = _secrets_json_path(isolated_home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("}{ not json")
+    path.chmod(0o600)
+    src = tmp_path / "s.txt"
+    src.write_text("v")
+    result = runner.invoke(cli.app, ["install-credentials", "alertmanager-hmac", "--file", str(src)])
+    assert result.exit_code != 0
+    assert "unreadable/corrupt" in result.output
+
+
+def test_install_credentials_existing_secrets_not_a_dict(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """An existing secrets.json holding a JSON non-object (array) is rejected."""
+    path = _secrets_json_path(isolated_home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[1, 2, 3]")
+    path.chmod(0o600)
+    src = tmp_path / "s.txt"
+    src.write_text("v")
+    result = runner.invoke(cli.app, ["install-credentials", "alertmanager-hmac", "--file", str(src)])
+    assert result.exit_code != 0
+    assert "must contain a JSON object" in result.output
+
+
+def test_install_credentials_write_failure_cleans_up_tmp(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """An os.replace failure surfaces (non-zero exit) and leaves no temp file behind."""
+    src = tmp_path / "s.txt"
+    src.write_text("v")
+    state_dir = _secrets_json_path(isolated_home).parent
+    with patch("waitbus.cli.install.credentials.os.replace", side_effect=OSError("disk full")):
+        result = runner.invoke(cli.app, ["install-credentials", "alertmanager-hmac", "--file", str(src)])
+    assert result.exit_code != 0
+    assert not _secrets_json_path(isolated_home).exists()
+    leftovers = list(state_dir.glob(".secrets-*.tmp")) if state_dir.exists() else []
+    assert leftovers == []
+
+
+def test_install_credentials_listener_enable_failure_warns(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """A failed systemctl enable warns but still exits 0 — the secret is already staged."""
+    src = tmp_path / "gh.txt"
+    src.write_text("gh-hmac")
+    with (
+        patch.object(sys, "platform", "linux"),
+        patch("waitbus.cli.install.credentials.subprocess.run") as run_mock,
+    ):
+        import subprocess as _subprocess
+
+        run_mock.return_value = _subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="unit not found")
+        result = runner.invoke(cli.app, ["install-credentials", "github-webhook-secret", "--file", str(src)])
+    assert result.exit_code == 0, result.stdout
+    assert "could not enable" in result.output
+    assert json.loads(_secrets_json_path(isolated_home).read_text())["github-webhook-secret"] == "gh-hmac"
+
+
+def test_install_credentials_listener_enable_macos_bootstraps(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """On macOS, staging the listener secret bootstraps the already-written plist."""
+    src = tmp_path / "gh.txt"
+    src.write_text("gh-hmac")
+    plist_dir = tmp_path / "LaunchAgents"
+    plist_dir.mkdir()
+    (plist_dir / "dev.waitbus.listener.plist").write_text("<plist/>")
+    with (
+        patch.object(sys, "platform", "darwin"),
+        patch("waitbus.cli._shared._launchd_target_dir", return_value=plist_dir),
+        patch("waitbus.cli._shared._launchctl_bootstrap") as bootstrap_mock,
+    ):
+        result = runner.invoke(cli.app, ["install-credentials", "github-webhook-secret", "--file", str(src)])
+    assert result.exit_code == 0, result.stdout
+    assert bootstrap_mock.call_count == 1
+
+
+def test_install_credentials_listener_macos_missing_plist_warns(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """On macOS, an absent listener plist warns instead of bootstrapping."""
+    src = tmp_path / "gh.txt"
+    src.write_text("gh-hmac")
+    empty_dir = tmp_path / "LaunchAgents"
+    empty_dir.mkdir()
+    with (
+        patch.object(sys, "platform", "darwin"),
+        patch("waitbus.cli._shared._launchd_target_dir", return_value=empty_dir),
+        patch("waitbus.cli._shared._launchctl_bootstrap") as bootstrap_mock,
+    ):
+        result = runner.invoke(cli.app, ["install-credentials", "github-webhook-secret", "--file", str(src)])
+    assert result.exit_code == 0, result.stdout
+    assert "listener plist not found" in result.output
+    assert bootstrap_mock.call_count == 0
+
+
+def test_install_credentials_dry_run_writes_nothing(
+    isolated_home: Path,
+) -> None:
+    """--dry-run prints the destination + enablement command and writes nothing."""
+    with patch.object(sys, "platform", "linux"):
+        result = runner.invoke(
+            cli.app,
+            ["install-credentials", "github-webhook-secret", "--dry-run"],
+        )
+    assert result.exit_code == 0, result.stdout
+    assert "Would write" in result.output
+    assert "Would run: systemctl --user enable --now waitbus-listener.service" in result.output
+    assert not _secrets_json_path(isolated_home).exists()
+
+
 # --- install-systemd -------------------------------------------------------
 
 # install-systemd refuses to run off Linux (it points operators at
