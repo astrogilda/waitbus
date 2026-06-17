@@ -313,7 +313,7 @@ in any Python 3.11+ environment. The package root logger uses
 ### As an MCP server (PyPI + uvx)
 
 `waitbus mcp serve` is a stdio MCP server (JSON-RPC 2.0 over the spec at
-https://spec.modelcontextprotocol.io/). What a given client can do with it
+https://modelcontextprotocol.io/specification). What a given client can do with it
 depends on which MCP features that client implements — so here is the actual
 capability split:
 
