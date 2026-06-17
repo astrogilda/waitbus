@@ -6,6 +6,20 @@
 # CI runs `uvx prek run --all-files` to close every bypass route
 # (SKIP=*, --no-verify, missing local install).
 
+# pre-commit.ci runs in a minimal sandbox with no `uv` and no project
+# virtualenv, so the local `language: system` hooks below (which shell out
+# to `uv run ...` or project scripts) cannot execute there. Skip them on
+# pre-commit.ci; they still run locally via prek and in the GitHub Actions
+# job that invokes `uvx prek run --all-files`. The framework-managed ruff
+# and check-manifest hooks keep running on pre-commit.ci.
+ci:
+  skip:
+    - sync-versions
+    - sdist-test-pairing
+    - derive-poll-costs-against
+    - complexity-ratchet
+    - vulture
+
 repos:
   - repo: local
     hooks:
