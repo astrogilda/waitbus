@@ -110,7 +110,7 @@ async def test_pull_tools_answer_over_stdio(tmp_path: Path) -> None:
         assert runs[0]["conclusion"] == "success"
 
         # A second, distinct tool proves dispatch is generic (not
-        # get_ci_status-specific). All four tools and the resources below
+        # get_ci_status-specific). Every tool and the resources below
         # ride the identical _handle_message path, so two tools + a resource
         # read fully exercise the serve-loop dispatch the bug had severed.
         failed = await asyncio.wait_for(

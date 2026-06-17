@@ -33,12 +33,15 @@ from waitbus import _db
 from waitbus import mcp as mcp_mod
 from waitbus._mcp_constants import (
     TAIL_EVENTS_MAX_WAIT_CAP_SECONDS,
+    TOOL_EMIT_AGENT_MESSAGE,
     TOOL_GET_CI_STATUS,
     TOOL_GET_PR_AGGREGATE,
     TOOL_LIST_FAILED_JOBS,
+    TOOL_READ_AGENT_MESSAGES,
     TOOL_TAIL_EVENTS,
 )
 from waitbus._mcp_subscriptions import (
+    URI_AGENT_PREFIX,
     URI_EVENT_PREFIX,
     URI_REPO_PREFIX,
     _QueuedEmit,
@@ -79,6 +82,8 @@ def test_tool_definitions_each_carry_title_and_schemas() -> None:
         TOOL_LIST_FAILED_JOBS,
         TOOL_GET_PR_AGGREGATE,
         TOOL_TAIL_EVENTS,
+        TOOL_EMIT_AGENT_MESSAGE,
+        TOOL_READ_AGENT_MESSAGES,
     }
     for tool in tools:
         assert tool.title, f"{tool.name} missing title"
@@ -586,12 +591,12 @@ def test_verify_session_weak_referenceable_succeeds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_resource_templates_returns_repo_and_event_only() -> None:
-    """The templates handler advertises exactly repo + event, no current.
+async def test_list_resource_templates_returns_repo_event_and_agent() -> None:
+    """The templates handler advertises repo + event + agent, no current.
 
     The uriTemplate strings must be derived from the imported
-    URI_REPO_PREFIX / URI_EVENT_PREFIX so they cannot drift from
-    parse_repo_uri / parse_event_uri.
+    URI_REPO_PREFIX / URI_EVENT_PREFIX / URI_AGENT_PREFIX so they cannot
+    drift from parse_repo_uri / parse_event_uri / parse_agent_uri.
     """
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.ListResourceTemplatesRequest]
@@ -601,13 +606,16 @@ async def test_list_resource_templates_returns_repo_and_event_only() -> None:
     assert isinstance(inner, types.ListResourceTemplatesResult)
     templates = inner.resourceTemplates
     by_name = {t.name: t for t in templates}
-    assert set(by_name) == {"repo", "event"}
+    assert set(by_name) == {"repo", "event", "agent"}
     assert by_name["repo"].uriTemplate == f"{URI_REPO_PREFIX}{{owner}}/{{repo}}"
     assert by_name["event"].uriTemplate == f"{URI_EVENT_PREFIX}{{ulid}}"
+    assert by_name["agent"].uriTemplate == f"{URI_AGENT_PREFIX}{{name}}"
     assert by_name["repo"].mimeType == "application/json"
     assert by_name["event"].mimeType == "application/json"
+    assert by_name["agent"].mimeType == "application/json"
     assert by_name["repo"].title
     assert by_name["event"].title
+    assert by_name["agent"].title
     # waitbus://current is a concrete URI, never a template.
     assert all(t.name != "current" for t in templates)
     assert all("current" not in t.uriTemplate for t in templates)

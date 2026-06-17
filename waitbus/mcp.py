@@ -66,7 +66,7 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCNotification
 from pydantic import AnyUrl
 
-from . import _columns, _config, _db, _paths, _untrusted
+from . import _columns, _config, _db, _paths, _ulid, _untrusted
 from ._broadcast_sub import (
     BroadcastConnectionError,
     FrameDecision,
@@ -76,42 +76,56 @@ from ._broadcast_sub import (
 from ._frame import DRAINABLE_CONTROL_KINDS, encode_frame, read_frame
 from ._log import structured
 from ._mcp_constants import (
+    AGENT_BROADCAST_RECIPIENT,
+    AGENT_MESSAGE_EVENT_TYPE,
+    AGENT_MESSAGE_SOURCE,
     LIST_FAILED_JOBS_DEFAULT_LIMIT,
     PROTOCOL_VERSION,
     PROTOCOL_VERSIONS_SUPPORTED,
+    READ_AGENT_MESSAGES_DEFAULT_LIMIT,
     TAIL_EVENTS_DEFAULT_LIMIT,
     TAIL_EVENTS_DEFAULT_MAX_WAIT_SEC,
     TAIL_EVENTS_MAX_WAIT_CAP_SECONDS,
+    TOOL_EMIT_AGENT_MESSAGE,
     TOOL_GET_CI_STATUS,
     TOOL_GET_PR_AGGREGATE,
     TOOL_LIST_FAILED_JOBS,
+    TOOL_READ_AGENT_MESSAGES,
     TOOL_TAIL_EVENTS,
 )
 from ._mcp_models import (
     schema_ci_status,
+    schema_emit_agent_message,
     schema_failed_jobs,
+    schema_input_emit_agent_message,
     schema_input_get_ci_status,
     schema_input_get_pr_aggregate,
     schema_input_list_failed_jobs,
+    schema_input_read_agent_messages,
     schema_input_tail_events,
     schema_pr_aggregate,
+    schema_read_agent_messages,
     schema_tail_events,
 )
 from ._mcp_subscriptions import (
+    URI_AGENT_PREFIX,
     URI_CURRENT,
     URI_EVENT_PREFIX,
     URI_REPO_PREFIX,
     _QueuedEmit,
     _SessionState,
     _uri_matches_frame,
+    agent_doorbell_uri_for_session,
     is_readable_uri,
     is_subscribable_uri,
+    parse_agent_uri,
     parse_event_raw_uri,
     parse_event_uri,
     parse_repo_uri,
 )
 from ._sdnotify import sd_notify
 from ._version import PACKAGE_VERSION
+from .sources._registry import event_types_supported
 
 _BACKOFF_INITIAL_S = 1.0
 _BACKOFF_MAX_S = 30.0
@@ -131,6 +145,7 @@ _CLAUDE_CHANNEL_METHOD: Final[str] = "notifications/claude/channel"
 # uriTemplate strings or from parse_repo_uri/parse_event_uri.
 _TEMPLATE_REPO: Final[str] = f"{URI_REPO_PREFIX}{{owner}}/{{repo}}"
 _TEMPLATE_EVENT: Final[str] = f"{URI_EVENT_PREFIX}{{ulid}}"
+_TEMPLATE_AGENT: Final[str] = f"{URI_AGENT_PREFIX}{{name}}"
 _COMPLETABLE_TEMPLATES: Final[dict[str, frozenset[str]]] = {
     _TEMPLATE_REPO: frozenset({"owner", "repo"}),
     _TEMPLATE_EVENT: frozenset({"ulid"}),
@@ -338,18 +353,62 @@ def _get_state(session: ServerSession) -> _SessionState:
     return state
 
 
+async def _ping_session_uri(session: ServerSession, state: _SessionState, uri: str, frame_id: Any) -> None:
+    """Emit (or pre-init queue) one resources/updated for ``uri`` on a session."""
+    if not state.initialized:
+        _queue_pending(state, uri, {"uri": uri, "frame_id": frame_id})
+        return
+    try:
+        await session.send_resource_updated(AnyUrl(uri))
+    except Exception as exc:
+        logger.debug("resource_updated emit failed for %s: %s", uri, exc)
+
+
+async def _emit_agent_doorbell(frame: dict[str, Any]) -> None:
+    """Route an agent_message frame to the agent-doorbell subscribers.
+
+    Per SWARM_DESIGN.md "Wildcard fan-out + dedup": each subscribed
+    ``ServerSession`` receives EXACTLY ONE ``resources/updated`` ping for
+    this message, regardless of how many ``waitbus://agent/...``
+    subscriptions it holds, and ``waitbus://current`` subscribers are NOT
+    pinged for an agent_message (the agent stream is partitioned out of
+    the CI stream). ``agent_doorbell_uri_for_session`` resolves the single
+    URI to ping (or None) for each session from its subscription set and
+    the message's ``msg_to``.
+    """
+    fields = frame.get("fields") or {}
+    msg_to = str(fields.get("msg_to") or "")
+    if not msg_to:
+        return
+    frame_id = frame.get("event_id")
+    for session, state in list(_sessions.items()):
+        uri = agent_doorbell_uri_for_session(state.subscriptions, msg_to)
+        if uri is None:
+            continue
+        await _ping_session_uri(session, state, uri, frame_id)
+
+
 async def _emit_to_subscribed_sessions(
     frame: dict[str, Any],
 ) -> None:
     """Fan out one frame to every session subscribed to a matching URI.
 
-    For each (session, state) in the registry, walk the session's
-    subscribed URIs and emit one ``notifications/resources/updated``
-    per matching URI. Pre-init sessions queue the emission in their
-    bounded deque; the flush pass replays them once the initialize
-    handshake fires.
+    An ``agent_message`` frame is routed exclusively through the
+    agent-doorbell path (one ping per session, CI subscribers excluded);
+    every other frame fans out to the ``waitbus://current`` /
+    ``waitbus://repo/...`` subscribers. For each matched (session, URI),
+    emit one ``notifications/resources/updated``. Pre-init sessions queue
+    the emission in their bounded deque; the flush pass replays them once
+    the initialize handshake fires.
     """
     if frame.get("kind") in DRAINABLE_CONTROL_KINDS:
+        return
+    if frame.get("event_type") == AGENT_MESSAGE_EVENT_TYPE:
+        # Agent messages NEVER fall through to the repo/current matcher:
+        # they are partitioned out of the CI stream, so a current/repo
+        # subscriber must not be pinged for one. The doorbell path owns
+        # the per-session dedup.
+        await _emit_agent_doorbell(frame)
         return
     owner = str(frame.get("owner", ""))
     repo = str(frame.get("repo", ""))
@@ -360,17 +419,8 @@ async def _emit_to_subscribed_sessions(
     # closes mid-fanout.
     for session, state in list(_sessions.items()):
         matched_uris = [uri for uri in state.subscriptions if _uri_matches_frame(uri, owner, repo)]
-        if not matched_uris:
-            continue
         for uri in matched_uris:
-            payload = {"uri": uri, "frame_id": frame.get("event_id")}
-            if not state.initialized:
-                _queue_pending(state, uri, payload)
-                continue
-            try:
-                await session.send_resource_updated(AnyUrl(uri))
-            except Exception as exc:
-                logger.debug("resource_updated emit failed for %s: %s", uri, exc)
+            await _ping_session_uri(session, state, uri, frame.get("event_id"))
 
 
 def _mark_overflow_if_saturated(state: _SessionState) -> None:
@@ -630,16 +680,42 @@ def _payload_matches_pr(payload: dict[str, Any], pr_number: int) -> bool:
     return any(isinstance(pr, dict) and pr.get("number") == pr_number for pr in prs)
 
 
+def _event_type_filter(event_types: list[str] | None) -> tuple[str, tuple[Any, ...]]:
+    """Build the event_type WHERE fragment + params for tail_events.
+
+    Two modes, per SWARM_DESIGN.md "Event-stream partitioning":
+
+    - ``event_types`` omitted (None): the DEFAULT lane EXCLUDES
+      ``agent_message`` so a CI-watching agent never ingests agent
+      cross-talk. Renders ``AND event_type != 'agent_message'``.
+    - ``event_types`` given (a non-empty list): an explicit allow-list,
+      rendered ``AND event_type IN (?, ?, ...)``. Passing
+      ``["agent_message"]`` is how an agent opts INTO the chatter lane;
+      passing ``["workflow_run"]`` narrows to CI. An empty list is treated
+      as the default (exclude agent_message) rather than "match nothing",
+      so a caller cannot accidentally silence the whole stream.
+    """
+    if not event_types:
+        return " AND event_type != ?", (AGENT_MESSAGE_EVENT_TYPE,)
+    placeholders = ", ".join(["?"] * len(event_types))
+    return f" AND event_type IN ({placeholders})", tuple(event_types)
+
+
 def _tail_events_read(
     repo: str | None,
     since_cursor: str | None,
     limit: int,
+    event_types: list[str] | None = None,
 ) -> dict[str, Any]:
     """One-shot windowed read of events above ``since_cursor``.
 
     Pure synchronous DB read with no waiting; returns whatever rows are
     currently above the cursor. ``_tail_events_blocking`` calls this
     before and after the optional bounded wait.
+
+    ``event_types`` partitions the stream (see :func:`_event_type_filter`):
+    when omitted, ``agent_message`` rows are excluded so agent cross-talk
+    stays off the default CI tail.
     """
     queried_at = time.time_ns()
     db = _paths.db_path()
@@ -652,6 +728,7 @@ def _tail_events_read(
             "queried_at_ns": queried_at,
         }
     split = _split_repo(repo)
+    type_sql, type_params = _event_type_filter(event_types)
     with _db.connect(db, readonly=True) as conn:
         conn.row_factory = sqlite3.Row
         # The MCP tail cursor stays a public ULID; ordering and the resume
@@ -664,12 +741,12 @@ def _tail_events_read(
             owner, name = split
             sql = (
                 "SELECT * FROM events WHERE event_id IS NOT NULL "
-                "AND seq > ? AND owner=? AND repo=? "
-                "ORDER BY seq LIMIT ?"
+                "AND seq > ? AND owner=? AND repo=?" + type_sql + " ORDER BY seq LIMIT ?"
             )
-            sql_rows = conn.execute(sql, (since_seq, owner, name, limit)).fetchall()
+            sql_rows = conn.execute(sql, (since_seq, owner, name, *type_params, limit)).fetchall()
         else:
-            sql_rows = list(_db.iter_events_above(conn, since_seq, limit=limit))
+            sql = "SELECT * FROM events WHERE event_id IS NOT NULL AND seq > ?" + type_sql + " ORDER BY seq LIMIT ?"
+            sql_rows = conn.execute(sql, (since_seq, *type_params, limit)).fetchall()
         for r in sql_rows:
             rows.append(_event_row_to_dict(r))
         if rows:
@@ -681,11 +758,35 @@ def _tail_events_read(
     }
 
 
+def _subscribe_event_types(event_types: list[str] | None) -> list[str]:
+    """Map the read-side event_types filter to a daemon subscribe allow-list.
+
+    The broadcast subscribe envelope's ``event_types`` is an ALLOW-list
+    (the daemon ships only matching frames). The read-side default
+    EXCLUDES ``agent_message``; the daemon has no exclude grammar, so the
+    default is expressed positively as "every supported type except
+    agent_message". An explicit read-side list is passed through verbatim,
+    intersected with the supported set so an unknown type cannot empty the
+    envelope (the daemon rejects a subscribe whose event_types yield zero
+    recognized values).
+    """
+    supported = event_types_supported()
+    if not event_types:
+        keep = sorted(supported - {AGENT_MESSAGE_EVENT_TYPE})
+        # Defensive: if agent_message were ever the ONLY supported type the
+        # exclude would empty the envelope; fall back to the full set so the
+        # long-poll still wakes (the re-read still applies the exclude).
+        return keep or sorted(supported)
+    requested = sorted(set(event_types) & supported)
+    return requested or sorted(supported)
+
+
 def _tail_events_blocking(
     repo: str | None,
     since_cursor: str | None,
     limit: int,
     max_wait_seconds: int,
+    event_types: list[str] | None = None,
 ) -> dict[str, Any]:
     """Windowed read with a bounded long-poll.
 
@@ -711,14 +812,23 @@ def _tail_events_blocking(
             f"max_wait_seconds={max_wait_seconds} exceeds the cap of "
             f"{TAIL_EVENTS_MAX_WAIT_CAP_SECONDS}s (Cursor client cancels at 5min)"
         )
-    result = _tail_events_read(repo, since_cursor, limit)
+    result = _tail_events_read(repo, since_cursor, limit, event_types)
     if result["events"] or max_wait_seconds <= 0:
         return result
 
     split = _split_repo(repo)
     filters = [f"{split[0]}/{split[1]}"] if split is not None else None
+    # Mirror the read-side event_type partition onto the broadcast
+    # subscription's envelope so the long-poll only WAKES on a frame the
+    # re-read would actually return. Without this, a default tail
+    # (agent_message excluded) would wake on an agent_message frame and
+    # then re-read empty -- a spurious wake. The daemon envelope is an
+    # allow-list, so the default (exclude agent_message) is expressed by
+    # asking for every supported type EXCEPT agent_message via the same
+    # filter helper the read uses, sharing one partition definition.
+    event_types_filter = _subscribe_event_types(event_types)
     try:
-        sub = open_subscriber(filters=filters, since=since_cursor)
+        sub = open_subscriber(filters=filters, since=since_cursor, event_types=event_types_filter)
     except BroadcastConnectionError:
         # Daemon unreachable or version/lag-rejected: either way the MCP
         # tool degrades gracefully to the durable one-shot DB read already
@@ -742,7 +852,106 @@ def _tail_events_blocking(
         sub.sock.close()
     # Re-read regardless of the outcome (matched / timed_out / closed):
     # the wait only optimises latency; the DB is authoritative.
-    return _tail_events_read(repo, since_cursor, limit)
+    return _tail_events_read(repo, since_cursor, limit, event_types)
+
+
+# --- Agent-message tools (emit_agent_message / read_agent_messages) -------
+
+
+def _emit_agent_message_impl(to: str, body: str, from_agent: str, thread_id: str | None) -> dict[str, Any]:
+    """Commit one agent_message row and return its committed identity.
+
+    The event_type (``agent_message``) and source (``agent``) are
+    HARDCODED here -- they are not tool inputs, so the model has exactly
+    one typed, validated lane it cannot fat-finger into the CI stream
+    (SWARM_DESIGN.md "Emit"). The body rides ``msg_body`` (the lean wire
+    frame drops ``payload_json``, so the body could not otherwise reach the
+    recipient); a fresh ULID correlation id is stamped so every message is
+    uniquely referenceable, and ``thread_id`` maps to ``msg_thread``.
+
+    Identity (``msg_from``/``msg_to``) is self-asserted under the same-UID
+    trust model -- no spoof protection (SWARM_DESIGN.md "Out of scope").
+    """
+    from ._emit import emit
+    from ._types import EventInsert
+
+    correlation_id = _ulid.new()
+    # delivery_id is the idempotency token; a fresh correlation_id per call
+    # makes it unique, so re-issuing the same logical send is a new row
+    # (fire-and-forget messages are distinct events, not idempotent retries
+    # of one delivery the way a webhook re-POST is).
+    result = emit(
+        EventInsert(
+            delivery_id=f"agent:{from_agent}:msg:{correlation_id}",
+            source=AGENT_MESSAGE_SOURCE,
+            event_type=AGENT_MESSAGE_EVENT_TYPE,
+            owner="local",
+            repo="agents",
+            received_at=time.time_ns(),
+            payload_json="{}",
+            ingest_method="api",
+            msg_to=to,
+            msg_from=from_agent,
+            msg_correlation_id=correlation_id,
+            msg_thread=thread_id,
+            msg_body=body,
+        )
+    )
+    return {
+        "event_id": result.event.event_id,
+        "inserted": result.inserted,
+        "queried_at_ns": time.time_ns(),
+    }
+
+
+def _row_to_agent_message(row: sqlite3.Row) -> dict[str, Any]:
+    """Project an events row into the AgentMessage shape.
+
+    The ``msg_*`` addressing fields are self-asserted free text and are
+    routed through :func:`_untrusted.clean_opt` exactly like every other
+    untrusted facet before reaching an LLM.
+    """
+    return {
+        "event_id": row["event_id"] or "",
+        "msg_to": _untrusted.clean_opt(row["msg_to"]),
+        "msg_from": _untrusted.clean_opt(row["msg_from"]),
+        "msg_body": _untrusted.clean_opt(row["msg_body"]),
+        "msg_thread": _untrusted.clean_opt(row["msg_thread"]),
+        "msg_correlation_id": _untrusted.clean_opt(row["msg_correlation_id"]),
+        "received_at": row["received_at"],
+    }
+
+
+def _read_agent_messages_impl(agent: str, since_cursor: str | None, limit: int) -> dict[str, Any]:
+    """Cursor-paginated read of this agent's messages above ``since_cursor``.
+
+    Returns ``agent_message`` rows whose ``msg_to`` is the caller's agent
+    name OR the ``*`` broadcast lane, ordered oldest-first by the
+    daemon-assigned commit order (``seq``) so the cursor advances
+    monotonically. This is the PULL side of the doorbell: the doorbell
+    fires a ``resources/updated`` ping, and the client drains the delta
+    here -- nothing re-delivers history (SWARM_DESIGN.md "Receive").
+    """
+    queried_at = time.time_ns()
+    db = _paths.db_path()
+    rows: list[dict[str, Any]] = []
+    next_cursor: str | None = since_cursor
+    if not db.exists():
+        return {"messages": rows, "next_cursor": next_cursor, "queried_at_ns": queried_at}
+    with _db.connect(db, readonly=True) as conn:
+        conn.row_factory = sqlite3.Row
+        since_seq = _db.seq_for_event_id(conn, since_cursor or "")
+        sql_rows = conn.execute(
+            "SELECT * FROM events WHERE event_id IS NOT NULL AND seq > ? "
+            "AND event_type = ? AND (msg_to = ? OR msg_to = ?) "
+            "ORDER BY seq LIMIT ?",
+            (since_seq, AGENT_MESSAGE_EVENT_TYPE, agent, AGENT_BROADCAST_RECIPIENT, limit),
+        ).fetchall()
+        for r in sql_rows:
+            rows.append(_row_to_agent_message(r))
+        if rows:
+            next_cursor = str(rows[-1]["event_id"])
+    return {"messages": rows, "next_cursor": next_cursor, "queried_at_ns": queried_at}
 
 
 def _event_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -855,7 +1064,8 @@ async def _subscribe_handler(uri: AnyUrl) -> None:
     uri_str = str(uri)
     if not is_subscribable_uri(uri_str):
         raise ValueError(
-            f"URI {uri_str!r} is not subscribable; use {URI_CURRENT} or {URI_REPO_PREFIX}{{owner}}/{{repo}}"
+            f"URI {uri_str!r} is not subscribable; use {URI_CURRENT}, "
+            f"{URI_REPO_PREFIX}{{owner}}/{{repo}}, or {URI_AGENT_PREFIX}{{name}}"
         )
     if not _paths.broadcast_socket().exists():
         raise RuntimeError(
@@ -918,6 +1128,30 @@ def _read_event_row(ulid: str, uri_str: str) -> sqlite3.Row:
     return row  # type: ignore[no-any-return]
 
 
+def _agent_doorbell_stub(agent_name: str, uri_str: str) -> list[ReadResourceContents]:
+    """Return the doorbell read stub for ``waitbus://agent/{name}``.
+
+    The doorbell read returns ONLY a stub, never the inbox. A
+    ``resources/read`` has no cursor and no ack, so returning the messages
+    here would dump the whole durable history on every read and exhaust the
+    model's context. The stub directs the client to the cursor-paginated
+    ``read_agent_messages`` tool (SWARM_DESIGN.md "Receive -- a cursor
+    tool, NOT a resource").
+    """
+    stub = {
+        "agent": agent_name,
+        "doorbell": uri_str,
+        "instruction": (
+            "This is a doorbell, not an inbox. Call the read_agent_messages "
+            f"tool with agent={agent_name!r} (and your last since_cursor) to "
+            "pull new messages addressed to you or to '*'. Reading this "
+            "resource never returns message bodies."
+        ),
+        "read_tool": TOOL_READ_AGENT_MESSAGES,
+    }
+    return [ReadResourceContents(content=json.dumps(stub, indent=2, default=str), mime_type="application/json")]
+
+
 async def _read_resource_handler(uri: AnyUrl) -> list[ReadResourceContents]:
     """Synthesise a JSON snapshot for a waitbus:// URI.
 
@@ -927,6 +1161,8 @@ async def _read_resource_handler(uri: AnyUrl) -> list[ReadResourceContents]:
       are subscription-only).
     - ``waitbus://event/{ulid}`` returns the single matching event row
       including payload_json.
+    - ``waitbus://agent/{name}`` returns the read_agent_messages stub
+      (the doorbell, never the inbox).
     """
     uri_str = str(uri)
     if not is_readable_uri(uri_str):
@@ -986,6 +1222,8 @@ async def _read_resource_handler(uri: AnyUrl) -> list[ReadResourceContents]:
                 mime_type="application/json",
             )
         ]
+    if (agent_name := parse_agent_uri(uri_str)) is not None:
+        return _agent_doorbell_stub(agent_name, uri_str)
     if (parsed := parse_repo_uri(uri_str)) is not None:
         owner, name = parsed
         if "*" in (owner, name):
@@ -1176,13 +1414,43 @@ def _tool_definitions() -> list[types.Tool]:
             description=(
                 "One-shot windowed read of events above an opaque cursor. "
                 "Returns events plus next_cursor. max_wait_seconds is "
-                "capped at 270s to stay below Cursor's 5-minute cancel."
+                "capped at 270s to stay below Cursor's 5-minute cancel. "
+                "agent_message rows are excluded unless event_types "
+                "explicitly requests them."
             ),
             inputSchema=schema_input_tail_events(),
             outputSchema=schema_tail_events(),
             # Read-only, but a windowed cursor read can advance the window
             # and the bounded long-poll makes repeat calls observe new rows,
             # so idempotentHint is intentionally left unset.
+            annotations=types.ToolAnnotations(readOnlyHint=True),
+        ),
+        types.Tool(
+            name=TOOL_EMIT_AGENT_MESSAGE,
+            title="Send agent message",
+            description=(
+                "Send one agent-to-agent message addressed to an agent name "
+                "(or '*' to broadcast). Hardcodes event_type=agent_message so "
+                "the message rides the typed lane, never the CI stream."
+            ),
+            inputSchema=schema_input_emit_agent_message(),
+            outputSchema=schema_emit_agent_message(),
+            # This tool WRITES a row -- it is not read-only and is not
+            # idempotent (every send is a distinct message).
+            annotations=types.ToolAnnotations(readOnlyHint=False),
+        ),
+        types.Tool(
+            name=TOOL_READ_AGENT_MESSAGES,
+            title="Read agent messages",
+            description=(
+                "Cursor-paginated read of messages addressed to this agent "
+                "(or to '*'). Returns messages plus next_cursor; nothing "
+                "re-delivers history. The pull side of the agent doorbell."
+            ),
+            inputSchema=schema_input_read_agent_messages(),
+            outputSchema=schema_read_agent_messages(),
+            # Read-only; the cursor advances on repeat calls so idempotentHint
+            # is intentionally left unset (same reasoning as tail_events).
             annotations=types.ToolAnnotations(readOnlyHint=True),
         ),
     ]
@@ -1239,8 +1507,24 @@ def _register_handlers(server: WaitbusServer) -> None:
                 arguments.get("since_cursor"),
                 int(arguments.get("limit", TAIL_EVENTS_DEFAULT_LIMIT)),
                 int(arguments.get("max_wait_seconds", TAIL_EVENTS_DEFAULT_MAX_WAIT_SEC)),
+                arguments.get("event_types"),
             )
             human = f"{len(result['events'])} event(s) read; next_cursor={result.get('next_cursor')}"
+        elif name == TOOL_EMIT_AGENT_MESSAGE:
+            result = _emit_agent_message_impl(
+                str(arguments["to"]),
+                str(arguments["body"]),
+                str(arguments["from_agent"]),
+                arguments.get("thread_id"),
+            )
+            human = f"agent_message {result['event_id']} sent to {arguments['to']!r}"
+        elif name == TOOL_READ_AGENT_MESSAGES:
+            result = _read_agent_messages_impl(
+                str(arguments["agent"]),
+                arguments.get("since_cursor"),
+                int(arguments.get("limit", READ_AGENT_MESSAGES_DEFAULT_LIMIT)),
+            )
+            human = f"{len(result['messages'])} message(s) read; next_cursor={result.get('next_cursor')}"
         else:
             raise ValueError(f"unknown tool {name!r}")
         if name not in tool_index:  # pragma: no cover  - defensive
@@ -1284,6 +1568,19 @@ def _register_handlers(server: WaitbusServer) -> None:
                 description=(
                     "Read-only snapshot of one stored event row by its "
                     "opaque ULID, including the fenced raw webhook payload."
+                ),
+                mimeType="application/json",
+            ),
+            types.ResourceTemplate(
+                uriTemplate=_TEMPLATE_AGENT,
+                name="agent",
+                title="Agent message doorbell",
+                description=(
+                    "Subscribe to be pinged (resources/updated) when an "
+                    "agent_message addressed to {name} (or '*') is committed. "
+                    "Reading this resource returns only a stub directing you "
+                    "to the read_agent_messages tool -- never the messages "
+                    "themselves (that would dump the whole inbox)."
                 ),
                 mimeType="application/json",
             ),

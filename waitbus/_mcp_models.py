@@ -23,6 +23,8 @@ import msgspec
 from ._mcp_constants import (
     LIST_FAILED_JOBS_DEFAULT_LIMIT,
     LIST_FAILED_JOBS_MAX_LIMIT,
+    READ_AGENT_MESSAGES_DEFAULT_LIMIT,
+    READ_AGENT_MESSAGES_MAX_LIMIT,
     TAIL_EVENTS_DEFAULT_LIMIT,
     TAIL_EVENTS_DEFAULT_MAX_WAIT_SEC,
     TAIL_EVENTS_MAX_LIMIT,
@@ -135,6 +137,57 @@ class TailEvents(msgspec.Struct, kw_only=True, frozen=True):
     queried_at_ns: int
 
 
+# --- Agent-message shapes --------------------------------------------------
+
+
+class AgentMessage(msgspec.Struct, kw_only=True, frozen=True):
+    """One agent-to-agent message as returned by read_agent_messages.
+
+    A projection of the ``msg_*`` addressing facet plus the ``event_id``
+    cursor key and ``received_at`` ordering field. The bodies and
+    addresses are self-asserted free text under the same-UID trust model
+    and are control-stripped at the emission seam exactly like every other
+    untrusted facet (see ``_columns.UNTRUSTED``).
+    """
+
+    event_id: str
+    msg_to: str | None = None
+    msg_from: str | None = None
+    msg_body: str | None = None
+    msg_thread: str | None = None
+    msg_correlation_id: str | None = None
+    received_at: int
+
+
+class ReadAgentMessages(msgspec.Struct, kw_only=True, frozen=True):
+    """read_agent_messages return shape.
+
+    ``messages`` are the agent's messages above ``since_cursor`` (those
+    addressed to the caller's agent name OR the ``*`` broadcast lane),
+    ordered oldest-first by the daemon-assigned commit order so the client
+    can advance its cursor monotonically. ``next_cursor`` is the last
+    message's ``event_id`` (or the input cursor when the window was empty),
+    exactly mirroring the ``tail_events`` cursor contract.
+    """
+
+    messages: list[AgentMessage]
+    next_cursor: str | None = None
+    queried_at_ns: int
+
+
+class EmitAgentMessage(msgspec.Struct, kw_only=True, frozen=True):
+    """emit_agent_message return shape.
+
+    ``event_id`` is the committed message's ULID (the cursor the
+    recipient will see it above); ``inserted`` is False on an idempotent
+    re-emit of the same delivery_id.
+    """
+
+    event_id: str
+    inserted: bool
+    queried_at_ns: int
+
+
 # --- Schema helpers --------------------------------------------------------
 
 
@@ -182,6 +235,16 @@ def schema_pr_aggregate() -> dict[str, Any]:
 def schema_tail_events() -> dict[str, Any]:
     """JSON Schema for the tail_events return value."""
     return _schema_for(TailEvents)
+
+
+def schema_read_agent_messages() -> dict[str, Any]:
+    """JSON Schema for the read_agent_messages return value."""
+    return _schema_for(ReadAgentMessages)
+
+
+def schema_emit_agent_message() -> dict[str, Any]:
+    """JSON Schema for the emit_agent_message return value."""
+    return _schema_for(EmitAgentMessage)
 
 
 # --- Input schemas (hand-rolled; tools have very small arg surfaces) ------
@@ -251,6 +314,82 @@ def schema_input_tail_events() -> dict[str, Any]:
                 "default": TAIL_EVENTS_DEFAULT_MAX_WAIT_SEC,
                 "description": "Bounded at 270s (below Cursor's 5-min client cancel)",
             },
+            "event_types": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": (
+                    "Restrict the read to these event_type values "
+                    "(e.g. ['workflow_run'] or ['agent_message']). When "
+                    "omitted (null), agent_message rows are EXCLUDED so a "
+                    "CI-watching agent never ingests cross-talk; every "
+                    "other event_type is returned."
+                ),
+            },
         },
+        "additionalProperties": False,
+    }
+
+
+def schema_input_emit_agent_message() -> dict[str, Any]:
+    """Input schema for emit_agent_message.
+
+    ``event_type`` and ``source`` are NOT inputs: the tool hardcodes
+    ``agent_message`` / ``agent`` on insert so the model cannot fat-finger
+    the typed lane (SWARM_DESIGN.md "Emit").
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "to": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Recipient agent name, or '*' to broadcast to every agent.",
+            },
+            "body": {
+                "type": "string",
+                "description": "The message payload (an opaque string; JSON by convention).",
+            },
+            "from_agent": {
+                "type": "string",
+                "minLength": 1,
+                "description": "This agent's self-asserted name (the msg_from address).",
+            },
+            "thread_id": {
+                "type": ["string", "null"],
+                "description": "Optional conversation-grouping key set on msg_thread.",
+            },
+        },
+        "required": ["to", "body", "from_agent"],
+        "additionalProperties": False,
+    }
+
+
+def schema_input_read_agent_messages() -> dict[str, Any]:
+    """Input schema for read_agent_messages.
+
+    ``agent`` is the caller's self-asserted name; the read returns
+    messages addressed to it OR to the ``*`` broadcast lane, above the
+    opaque ``since_cursor`` (the ULID of the last message the client saw).
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "agent": {
+                "type": "string",
+                "minLength": 1,
+                "description": "This agent's self-asserted name; selects msg_to == agent OR '*'.",
+            },
+            "since_cursor": {
+                "type": ["string", "null"],
+                "description": "Opaque cursor (an event_id); returns messages strictly above it.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": READ_AGENT_MESSAGES_MAX_LIMIT,
+                "default": READ_AGENT_MESSAGES_DEFAULT_LIMIT,
+            },
+        },
+        "required": ["agent"],
         "additionalProperties": False,
     }
