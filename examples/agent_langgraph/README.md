@@ -1,7 +1,7 @@
 # agent_langgraph — a real LangGraph agent that reacts to a waitbus event
 
 This example shows a [LangGraph](https://github.com/langchain-ai/langgraph)
-agent subscribing to [waitbus](https://github.com/sgilda/waitbus) and
+agent subscribing to [waitbus](https://github.com/astrogilda/waitbus) and
 reacting to an event, fully offline, with no LLM network calls.
 
 ## The graph
