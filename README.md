@@ -129,7 +129,7 @@ semantics.
 ```bash
 uv tool install waitbus          # install the package
 waitbus init                     # one-time setup: state dirs, SQLite schema, scaffold files
-waitbus install-credentials github-webhook-secret   # encrypt + stage HMAC secret via systemd-creds
+waitbus install-credentials github-webhook-secret   # optional: only for GitHub-CI waiting (enables the webhook listener)
 waitbus install-systemd          # Linux: copy + enable the 8 systemd-user units
 waitbus install-launchd          # macOS: copy + bootstrap the 4 LaunchAgent plists
 waitbus read-events watch        # live tail of incoming events
@@ -222,7 +222,7 @@ buses (agent-message-queue, claude-code-inter-session): see
 ```bash
 uv tool install waitbus              # or: pipx install waitbus
 waitbus init                         # one-time setup: state dirs, SQLite schema, scaffold files
-waitbus install-credentials github-webhook-secret   # encrypt + stage HMAC via systemd-creds
+waitbus install-credentials github-webhook-secret   # optional: HMAC for the GitHub webhook listener (opt-in)
 waitbus install-credentials alertmanager-hmac       # optional: alertmanager / watchdog HMAC
 waitbus install-systemd              # Linux: copy + enable the 8 systemd-user units
 waitbus install-launchd              # macOS: copy + bootstrap the 4 LaunchAgent plists
@@ -240,7 +240,7 @@ daemon entry-points and admin commands are reachable via sub-commands:
 | `waitbus init` | Bootstrap state dirs, SQLite schema, scaffold files |
 | `waitbus install-systemd` | Linux: copy + enable systemd-user units |
 | `waitbus install-launchd` | macOS: copy + bootstrap LaunchAgent plists |
-| `waitbus install-credentials` | Encrypt a credential via systemd-creds and stage it for `LoadCredentialEncrypted=` |
+| `waitbus install-credentials` | Stage an HMAC secret into the 0600 secrets file (reads `--file` or stdin) |
 | `waitbus doctor` | Validate install (paths, binaries, credential store, units, /metrics) |
 | `waitbus status` | Operational dashboard: DB row count, daemon liveness |
 | `waitbus verify-plugin` | Validate `.claude-plugin/plugin.json` |
@@ -423,10 +423,10 @@ waitbus pr-monitor tick --pr 7 --pr 9
   EOF-triggered cursor reset.
 
 - **HMAC-SHA256 webhook signature verification.** Secret staged once via
-  `waitbus install-credentials github-webhook-secret` (encrypted by
-  `systemd-creds`, decrypted by systemd into `$CREDENTIALS_DIRECTORY` at
-  unit-start). Missing or invalid signatures are rejected with 401 before
-  the payload is read.
+  `waitbus install-credentials github-webhook-secret` into a `0600`
+  `secrets.json` under the user state directory, read at unit-start.
+  Missing or invalid signatures are rejected with 401 before the payload
+  is read.
 
 - **SIGTERM drain guarantee.** The broadcast daemon stops accepting new
   subscribers on SIGTERM, drains all in-flight frames to connected subscribers,
@@ -481,20 +481,23 @@ The shipped systemd units use `StateDirectory=waitbus` and
 directories with 0700 ownership before the daemons start — no
 operator mkdir required.
 
-**Credentials** (staged via `waitbus install-credentials <name>`):
+**Secrets** (staged via `waitbus install-credentials <name>`):
 
-| Credential name | Required | Purpose |
-|-----------------|----------|---------|
-| `github-webhook-secret` | Yes | HMAC secret for GitHub webhook signature verification |
+| Secret name | Required | Purpose |
+|-------------|----------|---------|
+| `github-webhook-secret` | Only with the webhook listener | HMAC secret for GitHub webhook signature verification |
 | `alertmanager-hmac` | No | HMAC secret for Alertmanager / watchdog webhook verification |
-| `broadcast-token` | No | Optional bearer token for broadcast subscriber auth |
 
-Each credential is encrypted by `systemd-creds encrypt --name=<name>` and
-written to `/etc/credstore.encrypted/waitbus.<name>.cred`. systemd
-decrypts it into `$CREDENTIALS_DIRECTORY/<name>` at unit-start; the daemon
-reads the plaintext from there. `waitbus doctor` reports whether each
-encrypted file is present without decrypting it. It exits 1 if any required
-piece is missing.
+The broadcast bus itself needs no secret: it is an AF_UNIX socket guarded by
+the kernel's same-UID peer-credential check, so there is no subscriber token.
+Secrets are stored in a single `0600`-mode `secrets.json` under the user
+state directory (`<state_dir>/secrets.json`); `install-credentials` reads the
+value from `--file` or stdin and merges it in with an atomic replace, never
+exposing it on the command line. At-rest protection of the file is delegated
+to the host's full-disk encryption (FileVault / LUKS) — see
+[SECURITY.md](SECURITY.md). `waitbus doctor` reports whether each required
+key is present without printing its value, and exits 1 if a piece needed by
+an enabled unit is missing.
 
 ---
 
@@ -553,14 +556,15 @@ waitbus read-events watch
 Enable units to start automatically on login:
 
 ```bash
-systemctl --user enable waitbus-listener.service waitbus-broadcast.socket \
+systemctl --user enable waitbus-broadcast.socket \
     waitbus-etag-poll.timer waitbus-watchdog.timer
+# The webhook listener is opt-in; `install-credentials github-webhook-secret` enables it.
 ```
 
 Rotate the webhook HMAC secret:
 
 ```bash
-# Encrypt the new value with systemd-creds and overwrite the staged file.
+# Pipe the new value in; install-credentials atomically replaces the staged secret.
 openssl rand -hex 32 | waitbus install-credentials github-webhook-secret
 # Then update the GitHub repository webhook secret and Alertmanager config.
 systemctl --user restart waitbus-listener.service
@@ -581,11 +585,9 @@ interactive session is open:
    Without this, the systemd user manager and all its units stop when the last
    interactive session ends.
 
-2. **No keyring unlock required.** Credentials are stored as
-   `systemd-creds`-encrypted files under `/etc/credstore.encrypted/` and
-   decrypted by systemd at unit-start using a host-bound key (TPM2 when
-   available, `/var/lib/systemd/credential.secret` otherwise). There is no
-   D-Bus session requirement and no `pam_gnome_keyring.so` dependency, so
+2. **No keyring unlock required.** Secrets live in a `0600` `secrets.json`
+   under the user state directory — read with a plain file read, no keyring,
+   no D-Bus session requirement, and no `pam_gnome_keyring.so` dependency, so
    the daemon stack runs unmodified on a fully headless box.
 
 **Verifying the linger setting works.** Open a fresh SSH session (do NOT start
@@ -628,9 +630,9 @@ deliveries to the local listener. The secret must match the plaintext you
 staged via `waitbus install-credentials github-webhook-secret`.
 
 For a systemd-supervised forwarder (the shipped `waitbus-forward@.service`
-template), no operator action is needed: the unit declares
-`LoadCredentialEncrypted=github-webhook-secret:...` and reads the decrypted
-value from `$CREDENTIALS_DIRECTORY/github-webhook-secret` at unit-start.
+template), no operator action is needed: the unit reads the
+`github-webhook-secret` key from `secrets.json` (via `$STATE_DIRECTORY`) at
+start and passes it to `gh webhook forward --secret`.
 
 **ETag polling (repos you can read but cannot receive webhooks for):**
 

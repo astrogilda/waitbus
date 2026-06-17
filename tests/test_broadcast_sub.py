@@ -27,9 +27,8 @@ from waitbus._broadcast_sub import (
     BookmarkCursor,
     BroadcastConnectionError,
     FrameDecision,
+    ProtocolVersionError,
     SubscriberHandle,
-    TokenRequiredError,
-    _resolve_token,
     await_predicate,
     emit_frame,
     open_subscriber,
@@ -108,44 +107,6 @@ async def _recv_non_heartbeat(
         if frame.get("kind") not in _CONTROL_KINDS:
             return frame
     return None
-
-
-# ---------------------------------------------------------------------------
-# _resolve_token unit tests (no daemon required)
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_token_explicit_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Explicit kwarg takes priority over all environment sources."""
-    monkeypatch.setenv("WAITBUS_BROADCAST_TOKEN", "env-token")
-    assert _resolve_token("explicit-token") == "explicit-token"
-
-
-def test_resolve_token_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    """WAITBUS_BROADCAST_TOKEN env var is returned when no explicit token."""
-    monkeypatch.setenv("WAITBUS_BROADCAST_TOKEN", "my-env-token")
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.delenv("WAITBUS_CREDS_DIR", raising=False)
-    assert _resolve_token(None) == "my-env-token"
-
-
-def test_resolve_token_creds_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Credential file under WAITBUS_CREDS_DIR is returned."""
-    (tmp_path / "broadcast-token").write_text("creds-token\n")
-    monkeypatch.delenv("WAITBUS_BROADCAST_TOKEN", raising=False)
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.setenv("WAITBUS_CREDS_DIR", str(tmp_path))
-    assert _resolve_token(None) == "creds-token"
-
-
-def test_resolve_token_none_when_unconfigured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Returns None when no token source is configured."""
-    monkeypatch.delenv("WAITBUS_BROADCAST_TOKEN", raising=False)
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.delenv("WAITBUS_CREDS_DIR", raising=False)
-    assert _resolve_token(None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +620,7 @@ def test_bookmark_cursor_skips_control_frames(tmp_path: Path, monkeypatch: pytes
     )
     assert cursor.load() == "01HZREALEVENT0000000000000"  # unchanged
     # subscribe_rejected has no event_id -> no advance.
-    cursor.advance({"kind": "subscribe_rejected", "reason": "token", "remediation": "x"})
+    cursor.advance({"kind": "subscribe_rejected", "reason": "version", "remediation": "x"})
     assert cursor.load() == "01HZREALEVENT0000000000000"  # unchanged
 
 
@@ -720,62 +681,15 @@ async def test_open_subscriber_bookmark_injects_cursor(
 
 
 @pytest.mark.asyncio
-async def test_wrong_token_surfaces_token_required_on_read(
+async def test_subscribe_returns_handle_without_probe_delay(
     running_daemon: tuple[broadcast.Broadcast, dict[str, Path]],
 ) -> None:
-    """A wrong token surfaces ``TokenRequiredError`` when the caller READS.
+    """A subscribe returns a handle promptly and has no client-side probe.
 
-    Wire protocol v1: ``open_subscriber`` no longer probes and so does NOT
-    raise synchronously on a bad token — it sends the subscribe envelope and
-    returns a handle. The daemon, having cleared the accept-time SO_PEERCRED
-    gate, writes a single ``subscribe_rejected{reason:"token"}`` frame and
-    FINs. The shared read engine (``await_predicate``) recognises that frame
-    and raises the typed ``TokenRequiredError`` carrying the daemon's
-    remediation string. Both tokens are within the [16, 128] envelope so this
-    exercises the hmac mismatch sub-path (not bad-length). Run in a thread
-    executor so the daemon's event loop keeps dispatching while the
-    synchronous read blocks.
-    """
-    daemon, paths = running_daemon
-    daemon.token = "expected-token-0123456789"  # 25 chars
-
-    loop = asyncio.get_running_loop()
-
-    # open_subscriber returns normally — no synchronous raise.
-    sub = await loop.run_in_executor(
-        None,
-        lambda: open_subscriber(
-            token="wrong-token-9876543210",  # 22 chars, mismatch
-            socket_path=str(paths["broadcast"]),
-        ),
-    )
-    try:
-
-        def _decide(_frame: dict[str, Any]) -> FrameDecision:
-            pytest.fail("decide() must not see the subscribe_rejected frame")
-
-        with pytest.raises(TokenRequiredError) as exc_info:
-            await loop.run_in_executor(
-                None,
-                lambda: await_predicate(sub, decide=_decide, deadline_seconds=3.0),
-            )
-        assert exc_info.value.remediation, "remediation must be carried"
-        assert "broadcast-token" in exc_info.value.remediation
-    finally:
-        sub.sock.close()
-
-
-@pytest.mark.asyncio
-async def test_no_token_returns_handle_without_probe_delay(
-    running_daemon: tuple[broadcast.Broadcast, dict[str, Path]],
-) -> None:
-    """A token-less subscribe returns a handle promptly and has no probe.
-
-    The fixture daemon has ``token=None``, so a token-less subscriber is
-    accepted. Under wire protocol v1 ``open_subscriber`` performs NO
-    client-side probe ``select`` and carries no pre-read frame (the
-    ``prefetched`` field is gone). It returns essentially at socket-write
-    speed. The daemon then emits a ``subscribe_ack`` control frame, which
+    Under wire protocol v1 ``open_subscriber`` performs NO client-side
+    probe ``select`` and carries no pre-read frame (the ``prefetched``
+    field is gone). It returns essentially at socket-write speed. The
+    daemon then emits a ``subscribe_ack`` control frame, which
     ``await_predicate`` SKIPS, and the first real event is delivered intact.
     """
     _daemon, paths = running_daemon
@@ -814,33 +728,29 @@ def test_open_subscriber_daemon_down_raises_connection_error(
     """No daemon -> ``BroadcastConnectionError`` (unchanged contract)."""
     absent = str(tmp_path / "nope.sock")
     with pytest.raises(BroadcastConnectionError) as exc_info:
-        open_subscriber(token="some-token", socket_path=absent)
+        open_subscriber(socket_path=absent)
     assert exc_info.value.remediation
 
 
 @pytest.mark.asyncio
-async def test_correct_token_subscribe_ack_skipped_first_event_delivered(
+async def test_subscribe_ack_skipped_first_event_delivered(
     running_daemon: tuple[broadcast.Broadcast, dict[str, Path]],
 ) -> None:
-    """A correct-token connection never loses its first event under v1.
+    """A connection never loses its first event under v1.
 
-    With a correct token the daemon registers the subscriber and writes a
-    ``subscribe_ack`` control frame (carrying ``caught_up_at``) AFTER any
-    replay, then streams real events. ``open_subscriber`` performs no probe
-    and stashes no frame; ``await_predicate`` SKIPS the ack as a control
-    frame and hands the first real event to ``decide`` intact — no frame is
-    eaten and no ``prefetched`` carry-over is needed.
+    The daemon registers the subscriber and writes a ``subscribe_ack``
+    control frame (carrying ``caught_up_at``) AFTER any replay, then
+    streams real events. ``open_subscriber`` performs no probe and stashes
+    no frame; ``await_predicate`` SKIPS the ack as a control frame and
+    hands the first real event to ``decide`` intact — no frame is eaten and
+    no ``prefetched`` carry-over is needed.
 
     The event is PRE-inserted and the subscriber uses ``since`` so the daemon
     replays it deterministically the instant the subscriber registers
     (the deterministic equivalent of the live-subscription 0.05s settle),
     putting the frame on the wire immediately after the ack.
     """
-    daemon, paths = running_daemon
-    # Token MUST be within the daemon's [16, 128] length envelope, else
-    # the bad-length sub-path rejects it before the value compare.
-    good_token = "good-token-0123456789"  # 21 chars
-    daemon.token = good_token
+    _daemon, paths = running_daemon
     # Pre-insert so `since` guarantees replay delivery (no registration race).
     _insert(paths["db"], "d-first-after-token")
     await asyncio.sleep(0.02)
@@ -848,7 +758,6 @@ async def test_correct_token_subscribe_ack_skipped_first_event_delivered(
     def _open() -> SubscriberHandle:
         return open_subscriber(
             filters=["test-owner/test-repo"],
-            token=good_token,
             since="00000000000000000000000000",
             socket_path=str(paths["broadcast"]),
         )
@@ -878,24 +787,25 @@ async def test_correct_token_subscribe_ack_skipped_first_event_delivered(
         sub.sock.close()
 
 
-def test_await_predicate_raises_token_required_on_subscribe_rejected_frame(
+def test_await_predicate_raises_protocol_version_on_version_reject_frame(
     tmp_path: Path,
 ) -> None:
-    """A ``subscribe_rejected{reason:"token"}`` frame read off the socket
-    surfaces as ``TokenRequiredError`` from ``await_predicate``, not as a
+    """A ``subscribe_rejected{reason:"version"}`` frame read off the socket
+    surfaces as ``ProtocolVersionError`` from ``await_predicate``, not as a
     confusing event whose ``kind`` is the reject envelope.
 
     Under wire protocol v1 ``open_subscriber`` no longer probes; the daemon's
     terminal reject frame is read by the shared engine. The engine must turn
-    it into the typed auth error carrying the daemon's remediation rather than
+    it into the typed error carrying the daemon's remediation rather than
     leaking a mystery frame into the consumer's normal event loop.
     """
     rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         reject = {
             "kind": "subscribe_rejected",
-            "reason": "token",
-            "remediation": "rotate the broadcast token",
+            "reason": "version",
+            "remediation": "send proto: 1",
+            "supported": [1],
         }
         wsock.sendall(encode_frame(json.dumps(reject).encode("utf-8")))
 
@@ -903,16 +813,16 @@ def test_await_predicate_raises_token_required_on_subscribe_rejected_frame(
             pytest.fail(
                 f"decide() must not see a subscribe_rejected frame "
                 f"(got {f!r}); await_predicate should have raised "
-                "TokenRequiredError first"
+                "ProtocolVersionError first"
             )
 
-        with pytest.raises(TokenRequiredError) as exc_info:
+        with pytest.raises(ProtocolVersionError) as exc_info:
             await_predicate(
                 SubscriberHandle(sock=rsock),
                 decide=_decide,
                 deadline_seconds=1.0,
             )
-        assert "rotate the broadcast token" in str(exc_info.value.remediation)
+        assert "send proto: 1" in str(exc_info.value.remediation)
     finally:
         rsock.close()
         wsock.close()
@@ -922,13 +832,12 @@ def test_await_predicate_raises_connection_error_on_version_reject_frame(
     tmp_path: Path,
 ) -> None:
     """A ``subscribe_rejected{reason:"version"}`` frame surfaces as
-    ``BroadcastConnectionError`` from ``await_predicate``.
+    ``ProtocolVersionError`` (a ``BroadcastConnectionError`` subclass) from
+    ``await_predicate``.
 
     The daemon writes this terminal frame when the client sends an
-    unsupported wire ``proto``. The shared engine distinguishes it from the
-    token-reject (which raises ``TokenRequiredError``) and raises the
-    connection-level error carrying the daemon's remediation, so a proto
-    mismatch is not mistaken for an auth failure.
+    unsupported wire ``proto``. The shared engine raises the connection-level
+    error carrying the daemon's remediation.
     """
     rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
@@ -1026,8 +935,8 @@ def test_caller_reject_branches_are_reachable(module_name: str, verb_attr: str |
     """The 5 subscribe-reject callers compile, import, and catch the base.
 
     The daemon's ``subscribe_rejected`` frame is reachable end-to-end;
-    ``await_predicate`` raises one of ``TokenRequiredError`` /
-    ``ProtocolVersionError`` / ``SubscriberLaggedError`` — all subclasses of
+    ``await_predicate`` raises one of ``ProtocolVersionError`` /
+    ``SubscriberLaggedError`` — both subclasses of
     ``BroadcastConnectionError``. Each caller catches ``BroadcastConnectionError``
     (the base), so it handles every reject reason without naming each subclass.
     Importing each module is the smoke check that the catch still type-checks.
@@ -1072,12 +981,12 @@ def test_read_subscribe_ack_returns_on_ack() -> None:
 
 
 def test_read_subscribe_ack_maps_reject_reason_to_typed_exception() -> None:
-    """A subscribe_rejected with reason='token' raises the typed TokenRequiredError."""
+    """A subscribe_rejected with reason='version' raises the typed ProtocolVersionError."""
     server, client = _socketpair_with_server_frames(
-        _frame_bytes({"kind": "subscribe_rejected", "reason": "token", "remediation": "set a token"})
+        _frame_bytes({"kind": "subscribe_rejected", "reason": "version", "remediation": "send proto: 1"})
     )
     try:
-        with pytest.raises(TokenRequiredError, match="reason='token'"):
+        with pytest.raises(ProtocolVersionError, match="reason='version'"):
             read_subscribe_ack(SubscriberHandle(sock=client), timeout_seconds=2.0)
     finally:
         server.close()
@@ -1085,29 +994,28 @@ def test_read_subscribe_ack_maps_reject_reason_to_typed_exception() -> None:
 
 
 def test_read_subscribe_ack_unknown_reject_reason_falls_to_base() -> None:
-    """An unknown reject reason falls to the base BroadcastConnectionError, not token."""
+    """An unknown reject reason falls to the base BroadcastConnectionError."""
     server, client = _socketpair_with_server_frames(
-        _frame_bytes({"kind": "subscribe_rejected", "reason": "lag_limit_exceeded"})
+        _frame_bytes({"kind": "subscribe_rejected", "reason": "some_future_reason"})
     )
     try:
-        with pytest.raises(BroadcastConnectionError, match="lag_limit_exceeded"):
+        with pytest.raises(BroadcastConnectionError, match="some_future_reason"):
             read_subscribe_ack(SubscriberHandle(sock=client), timeout_seconds=2.0)
     finally:
         server.close()
         client.close()
 
 
-def test_read_subscribe_ack_missing_reject_reason_defaults_to_token() -> None:
-    """A reject frame with NO reason key maps to TokenRequiredError.
+def test_read_subscribe_ack_missing_reject_reason_falls_to_base() -> None:
+    """A reject frame with NO reason key maps to the base BroadcastConnectionError.
 
-    Pins the current missing-reason default in the shared reject mapping:
-    a frame lacking ``reason`` is treated as a token rejection. Whether
-    that default should change is a separate question; this test only
-    keeps the behavior observable.
+    An absent reason must NOT be mislabelled as any specific failure class
+    (there is no token-default any more): it falls to the unknown-reason
+    base exception.
     """
     server, client = _socketpair_with_server_frames(_frame_bytes({"kind": "subscribe_rejected"}))
     try:
-        with pytest.raises(TokenRequiredError, match="reason='token'"):
+        with pytest.raises(BroadcastConnectionError):
             read_subscribe_ack(SubscriberHandle(sock=client), timeout_seconds=2.0)
     finally:
         server.close()

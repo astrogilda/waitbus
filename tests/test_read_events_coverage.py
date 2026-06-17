@@ -24,12 +24,11 @@ from waitbus import _db, read_events
 from waitbus._broadcast_sub import (
     BookmarkCursor,
     BroadcastConnectionError,
+    ProtocolVersionError,
     SubscriberHandle,
     SubscriberLaggedError,
-    TokenRequiredError,
     WaitOutcome,
 )
-from waitbus._secrets import SecretNotConfigured
 from waitbus._types import EventInsert
 
 # ---------------------------------------------------------------------------
@@ -913,10 +912,10 @@ def test_watch_returns_2_on_subscriber_lagged_error(
     assert rc == 2
 
 
-def test_watch_returns_2_on_token_required_error(
+def test_watch_returns_2_on_protocol_version_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    err_instance = TokenRequiredError("token required", remediation="configure broadcast token")
+    err_instance = ProtocolVersionError("unsupported proto", remediation="send proto: 1")
     with patch.object(read_events, "open_subscriber", side_effect=err_instance):
         rc = read_events.watch(
             filters=["acme/widgets"],
@@ -925,25 +924,6 @@ def test_watch_returns_2_on_token_required_error(
             cursor=None,
         )
     assert rc == 2
-
-
-def test_watch_returns_2_on_secret_not_configured(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with patch.object(
-        read_events,
-        "open_subscriber",
-        side_effect=SecretNotConfigured("broadcast-token not configured"),
-    ):
-        rc = read_events.watch(
-            filters=["acme/widgets"],
-            event_types=None,
-            since=None,
-            cursor=None,
-        )
-    assert rc == 2
-    err = capsys.readouterr().err
-    assert "waitbus --watch" in err
 
 
 # ---------------------------------------------------------------------------

@@ -427,7 +427,7 @@ def test_request_reply_wait_raises_on_dead_daemon(monkeypatch: pytest.MonkeyPatc
     try:
         with pytest.raises(BroadcastConnectionError):
             _messaging._await_reply(
-                correlation_id="c1", sender="agent_a", since="x", timeout=1.0, socket_path="s", token=None, db_path=None
+                correlation_id="c1", sender="agent_a", since="x", timeout=1.0, socket_path="s", db_path=None
             )
     finally:
         a.close()

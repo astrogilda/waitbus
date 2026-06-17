@@ -45,7 +45,6 @@ request:
   "event_types": ["workflow_run", "workflow_job",
                   "prometheus_alert", "prometheus_watchdog"],
   "since": "01HZXXXXXXXXXXXXXXXXXXXXXX",
-  "token": "<optional shared token>",
   "envelope": "diffs"
 }
 ```
@@ -87,12 +86,6 @@ Field contracts (validators in `waitbus/broadcast.py`):
   (validated by `waitbus/broadcast.py::_validate_since_cursor`).
   The daemon replays persisted
   events strictly after this ULID before switching to live delivery.
-- **`token`** — optional shared secret. When the daemon has a
-  `broadcast-token` credential configured, the subscriber MUST send a
-  matching token. Length envelope is `[16, 128]` characters
-  (`waitbus/broadcast.py::TOKEN_MIN_LEN` / `waitbus/broadcast.py::TOKEN_MAX_LEN`);
-  comparison is constant-time via `hmac.compare_digest`
-  (`waitbus/broadcast.py::_validate_subscribe_token`).
 - **`envelope`** — optional delivery-mode selector. Absent or
   `"diffs"` (the only allow-listed value today) selects the faithful
   per-event tail every subscribe frame produced before this field
@@ -279,14 +272,14 @@ lag-eviction outcome.
 ```json
 {
   "kind": "subscribe_rejected",
-  "reason": "token",
+  "reason": "version",
   "remediation": "<operator hint string>",
-  "supported": null
+  "supported": [1]
 }
 ```
 
 Terminal control frame written exactly once before the daemon closes a
-rejected subscribe. `reason` is one of `"token"`, `"version"`, or
+rejected subscribe. `reason` is one of `"version"` or
 `"lag_limit_exceeded"`. A `"version"` reject populates `"supported"`
 with the list of accepted protocol versions (e.g. `[1]`); all other
 rejects emit `"supported": null`. Full field semantics are in §3.
@@ -307,7 +300,7 @@ reject frame); the consumer sees a clean EOF and reconnects.
 
 ## 3. Subscriber authentication contract (STABLE)
 
-Two independent gates protect the broadcast socket:
+One gate protects the broadcast socket:
 
 1. **Peer-credential UID check (always on).** The connecting peer's
    UID must equal the daemon's own UID (`os.getuid()`). Linux reads it
@@ -317,30 +310,20 @@ Two independent gates protect the broadcast socket:
    (`waitbus/broadcast.py::_peer_uid`). A consumer running as a
    different UID cannot subscribe — this is by design (single-user
    workstation tool).
-2. **Shared-token check (optional).** Active only when a
-   `broadcast-token` credential is staged. Constant-time compared as
-   described in §2.
 
-Both gates are server-enforced; a consumer cannot bypass them.
+The AF_UNIX socket's kernel-attested same-UID peer credential is the
+entire ingress boundary. There is no application-level subscribe token:
+any process that can reach the socket is already proven same-UID, so a
+bearer token would re-check an identity the kernel has already attested.
+The gate is server-enforced; a consumer cannot bypass it.
 
 ### Subscribe-rejected frame (STABLE)
 
-When the shared-token check fails, OR when the subscribe envelope's
-`proto` names an unsupported wire version, the daemon writes exactly one
-length-prefix-framed `subscribe_rejected` control frame back to the
-subscriber and then closes the connection (clean FIN; the next read is
-EOF). The frame is terminal — it is the last thing the daemon sends on
-that connection.
-
-Token reject:
-
-```json
-{
-  "kind": "subscribe_rejected",
-  "reason": "token",
-  "remediation": "<operator hint string>"
-}
-```
+When the subscribe envelope's `proto` names an unsupported wire version,
+the daemon writes exactly one length-prefix-framed `subscribe_rejected`
+control frame back to the subscriber and then closes the connection
+(clean FIN; the next read is EOF). The frame is terminal — it is the
+last thing the daemon sends on that connection.
 
 Version reject (unsupported `proto`):
 
@@ -357,20 +340,16 @@ Version reject (unsupported `proto`):
   collide with any other frame kind (`event`, `truncated`,
   `daemon_heartbeat`, `subscribe_ack`), so a consumer can dispatch on it
   unambiguously.
-- `reason` is `token` (shared-token check failed) or `version` (the
-  envelope's `proto` is not a supported wire version). These are the
-  only two reject reasons that emit a frame at subscribe time; the
-  third framed reason, `lag_limit_exceeded`, is emitted at eviction
+- `reason` is `version` (the envelope's `proto` is not a supported wire
+  version) — the only reason that emits a frame at subscribe time. The
+  other framed reason, `lag_limit_exceeded`, is emitted at eviction
   time, best-effort and only at a frame boundary (§2a).
-- `remediation` is a non-empty human-readable hint: for `token` it names
-  the `broadcast-token` credential and the env/creds-dir resolution; for
-  `version` it states which protocol versions the daemon speaks.
+- `remediation` is a non-empty human-readable hint: for `version` it
+  states which protocol versions the daemon speaks.
 - `supported` is present only on a `version` reject and lists the
   protocol versions the daemon accepts (`[1]` today), so a forward- or
   backward-skewed client can renegotiate without guessing.
 - It is the **only** frame the daemon ever sends back on a reject. The
-  token variant is emitted **only** on a post-peer-cred token failure
-  (both the bad-token-length and the value-mismatch sub-paths); the
   version variant is emitted when the parsed envelope carries an
   unsupported `proto`. Every other request-shape reject (peer-cred UID
   mismatch, receive timeout, bad JSON, non-object envelope, bad
@@ -380,15 +359,14 @@ Version reject (unsupported `proto`):
   closes with a clean EOF (§2a).
 - **Why this is safe to disclose:** the peer-credential UID gate runs
   at accept time, *before* the subscribe frame is read. A peer that
-  reaches the token check (or the version check) has already been proven
-  to run as the daemon's own UID, so the frame leaks nothing to an
-  unauthenticated surface (and AF_UNIX has no network surface to begin
-  with). The same bounded-disclosure rationale covers both the `token`
-  and `version` rejects. The write is best-effort and bounded (2s) so a
-  slow/half-dead peer cannot stall the daemon's accept loop.
+  reaches the version check has already been proven to run as the
+  daemon's own UID, so the frame leaks nothing to an unauthenticated
+  surface (and AF_UNIX has no network surface to begin with). The write
+  is best-effort and bounded (2s) so a slow/half-dead peer cannot stall
+  the daemon's accept loop.
 
 The reference client (`waitbus/_broadcast_sub.py::open_subscriber`)
-turns this frame into a typed `TokenRequiredError` carrying the
+turns this frame into a typed `ProtocolVersionError` carrying the
 `remediation` string; a real event delivered inside the client's
 post-subscribe probe window is preserved (re-injected), never dropped.
 
@@ -604,7 +582,7 @@ forward-compatibility seam.
 | `1`   | Matched a GitHub frame whose conclusion is terminal `failure` / `cancelled` / `timed_out` |
 | `124` | `--timeout` elapsed with no match (coreutils `timeout` convention) |
 | `130` | SIGINT (Ctrl-C); clean teardown, no spurious match (`128 + SIGINT(2)`) |
-| `2`   | Startup failure (daemon down, token required, bad `--repo`, malformed `--match`, evaluator extra not installed, no predicate supplied) |
+| `2`   | Startup failure (daemon down, bad `--repo`, malformed `--match`, evaluator extra not installed, no predicate supplied) |
 
 GitHub `skipped` / `neutral` / `action_required` / `stale` are
 non-terminal — the wait keeps streaming. There are deliberately no
@@ -670,7 +648,7 @@ multi-byte sequence becomes U+FFFD rather than raising.
 | 4-byte BE length-prefix frame | `waitbus/_frame.py::encode_frame` | Yes |
 | Subscribe-frame shape + field validators (incl. `proto`) | `waitbus/broadcast.py::FILTER_RE`, `waitbus/broadcast.py::_validate_since_cursor`, `waitbus/broadcast.py::_validate_subscribe_filters`, `waitbus/broadcast.py::_validate_subscribe_event_types`, `waitbus/broadcast.py::_validate_subscribe_envelope` | Yes |
 | Frame catalogue: `kind` discriminator, five frame kinds, `subscribe_ack` watermark | `waitbus/_frame.py::ALL_FRAME_KINDS`, `waitbus/_frame.py::SubscribeAckFrame` | Yes |
-| Peercred UID gate + optional token; `subscribe_rejected{token,version}` | `waitbus/_peercred.py::peer_uid`, `waitbus/broadcast.py::_peer_uid`, `waitbus/broadcast.py::_validate_subscribe_token` | Yes |
+| Peercred UID gate (same-UID); `subscribe_rejected{version}` | `waitbus/_peercred.py::peer_uid`, `waitbus/broadcast.py::_peer_uid` | Yes |
 | `events` column set + types | `waitbus/schema.sql` | Yes |
 | Filter syntax (`owner/repo`, `owner/*`, `*`) | `waitbus/broadcast.py::FILTER_RE` | Yes |
 | Coalesced replay mode (opt-in, client-side) | `waitbus/coalesce.py::coalesce_replay`, `waitbus/_terminal.py::entity_key` | Yes |

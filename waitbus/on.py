@@ -112,7 +112,6 @@ from ._broadcast_sub import (
     read_subscribe_ack,
 )
 from ._duration import parse_duration
-from ._secrets import SecretNotConfigured
 from .cli._shared import _exit_with_error, run_typer_app
 
 # The predicate / repo plumbing is shared with ``waitbus wait`` -- ``on`` is a
@@ -561,8 +560,6 @@ def _open_acked_subscriber(effective_repo: str | None) -> SubscriberHandle:
         sub = open_subscriber(filters=[effective_repo] if effective_repo is not None else None)
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation, code=EXIT_STARTUP)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc), code=EXIT_STARTUP)
     try:
         read_subscribe_ack(sub)
     except BroadcastConnectionError as exc:

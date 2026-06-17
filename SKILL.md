@@ -113,10 +113,9 @@ waitbus install-systemd
 `platformdirs`), provisions the SQLite schema, and transparently migrates
 any legacy event data from a previous default location if present to the new
 location on first run. `waitbus install-credentials
-github-webhook-secret` reads the HMAC secret from `--value`, `--file`, or
-stdin, shells out to `systemd-creds encrypt --name=github-webhook-secret`,
-and writes the ciphertext to
-`/etc/credstore.encrypted/waitbus.github-webhook-secret.cred`.
+github-webhook-secret` reads the HMAC secret from `--file` or stdin and
+merges it (atomic replace) into the `0600` `secrets.json` under the user
+state directory; it is only needed when you run the opt-in webhook listener.
 `waitbus install-systemd` copies the eight systemd-user units
 shipped in the wheel into `~/.config/systemd/user/` and runs
 `daemon-reload`.
@@ -200,19 +199,19 @@ under the runtime directory and frames every wire payload with a
 shape
 
 ```json
-{"filters": ["owner/repo", "*", "owner/*"],
+{"proto": 1,
+ "filters": ["owner/repo", "*", "owner/*"],
  "event_types": ["workflow_run", "workflow_job",
                  "prometheus_alert", "prometheus_watchdog"],
  "since": "01HZ...26chars",
- "token": "..."}
+ "envelope": "diffs"}
 ```
 
 — validated against an anchored regex (no shell-metachar surface).
 The peer-credential UID check restricts subscribers to the daemon's
 own UID (Linux uses `SO_PEERCRED`; macOS uses `getpeereid()` via
-ctypes); an optional `broadcast-token` credential (staged via
-`waitbus install-credentials broadcast-token`) adds a token check
-on top.
+ctypes) -- that same-UID check is the sole subscriber gate, so there is
+no subscriber token.
 
 Operator-side observability lives at `http://127.0.0.1:9000/metrics`
 on the listener: per-source ingress counters (`received`, `inserted`,

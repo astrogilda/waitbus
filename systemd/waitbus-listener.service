@@ -24,11 +24,11 @@ WorkingDirectory=%S/waitbus
 StandardOutput=journal
 StandardError=journal
 
-# Credentials decrypted by systemd at unit-start; the listener reads
-# them from $CREDENTIALS_DIRECTORY/<name> via _secrets.get_secret.
-# Stage via: waitbus install-credentials <name>
-LoadCredentialEncrypted=github-webhook-secret:/etc/credstore.encrypted/waitbus.github-webhook-secret.cred
-LoadCredentialEncrypted=alertmanager-hmac:/etc/credstore.encrypted/waitbus.alertmanager-hmac.cred
+# Secrets are read from the 0600 secrets.json under the state dir via
+# _secrets.get_secret (no systemd credential plumbing). Stage via:
+#   waitbus install-credentials github-webhook-secret
+# (which also enables this unit). At-rest protection is delegated to
+# host full-disk encryption + UNIX DAC; see SECURITY.md.
 
 # Hardening (systemd >= 246).
 PrivateTmp=true

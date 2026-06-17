@@ -77,7 +77,6 @@ from ._broadcast_sub import (
     open_subscriber,
 )
 from ._duration import parse_duration
-from ._secrets import SecretNotConfigured
 from ._terminal import FAILURE_CONCLUSIONS, SUCCESS_CONCLUSION
 from .cli._shared import _exit_with_error, run_typer_app
 from .read_events import detect_repo
@@ -470,8 +469,6 @@ def _wait_composed(
         sub = open_subscriber(filters=None, since=since)
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation, code=EXIT_STARTUP)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc), code=EXIT_STARTUP)
 
     tracker = _compose.AllOfTracker(clauses)
     matched_source: dict[str, str | None] = {}
@@ -677,8 +674,6 @@ def _wait(
         )
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation, code=EXIT_STARTUP)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc), code=EXIT_STARTUP)
 
     # --- the engine seam: bool Predicate -> FrameDecision ladder ----------
     matched_exit: dict[str, int] = {}

@@ -149,7 +149,6 @@ def _await_reply(
     since: str,
     timeout: float | None,
     socket_path: str | None,
-    token: str | None,
     db_path: Path | None,
 ) -> EventFrame | None:
     """Block for this request's correlated reply, tolerating an oversize reply.
@@ -159,7 +158,7 @@ def _await_reply(
     Returns ``None`` if no reply matched before ``timeout`` (a slow/absent peer);
     raises :class:`BroadcastConnectionError` if the daemon connection drops (dead).
     """
-    handle = open_subscriber(since=since, socket_path=socket_path, token=token)
+    handle = open_subscriber(since=since, socket_path=socket_path)
     try:
         captured: list[dict[str, Any]] = []
         outcome = await_predicate(
@@ -192,7 +191,6 @@ def request(
     correlation_id: str | None = None,
     thread: str | None = None,
     socket_path: str | None = None,
-    token: str | None = None,
     db_path: Path | None = None,
     doorbell_path: Path | None = None,
 ) -> EventFrame | None:
@@ -230,7 +228,7 @@ def request(
         correlation_id: override the correlation id (defaults to a fresh ULID).
         thread: optional conversation-grouping key set on ``msg_thread``;
             ``None`` (the default) leaves the message unthreaded.
-        socket_path / token: broadcast subscribe seams (see :func:`wait_for`).
+        socket_path: broadcast subscribe seam (see :func:`wait_for`).
         db_path / doorbell_path: emit seams (see :func:`waitbus.emit`).
 
     Returns:
@@ -258,7 +256,6 @@ def request(
         since=result.event.event_id,
         timeout=timeout,
         socket_path=socket_path,
-        token=token,
         db_path=db_path,
     )
 

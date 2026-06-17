@@ -303,7 +303,6 @@ def wait_for(
     timeout: float | None = None,
     since: str | None = None,
     socket_path: str | None = None,
-    token: str | None = None,
 ) -> EventFrame | None:
     """Block until one event matches ``match`` (and/or ``source``); return it.
 
@@ -333,13 +332,12 @@ def wait_for(
         since: ULID cursor for replay; ``None`` starts from now.
         socket_path: Override the broadcast socket path (the local-proxy /
             test seam).
-        token: Explicit broadcast bearer token; defaults to env / keystore.
 
     Raises:
         ValueError: ``match`` is malformed or neither ``match`` nor ``source``
             was given.
-        BroadcastConnectionError / subclasses: daemon unavailable, bad token,
-            or unsupported wire version.
+        BroadcastConnectionError / subclasses: daemon unavailable or
+            unsupported wire version.
         msgspec.ValidationError: a matched frame could not be decoded into
             :class:`EventFrame` (rare; ``strict=False`` tolerates additive wire
             fields).
@@ -349,7 +347,7 @@ def wait_for(
     if all_of is not None or first_of is not None:
         _validate_compose_kwargs(all_of, first_of, match, source, to)
         clauses = _clause_predicates(all_of if all_of is not None else first_of or ())
-        handle = open_subscriber(since=since, socket_path=socket_path, token=token)
+        handle = open_subscriber(since=since, socket_path=socket_path)
         try:
             if all_of is not None:
                 return _drain_all_of(handle, AllOfTracker(clauses), deadline_seconds=timeout)
@@ -358,7 +356,7 @@ def wait_for(
         finally:
             handle.sock.close()
     composed = _compose_predicate(match, source, to)
-    handle = open_subscriber(since=since, socket_path=socket_path, token=token)
+    handle = open_subscriber(since=since, socket_path=socket_path)
     try:
         return _drain_one(handle, composed, deadline_seconds=timeout, raise_on_peer_close=True)
     finally:
@@ -373,7 +371,6 @@ def subscribe(
     first_of: Sequence[str] | None = None,
     since: str | None = None,
     socket_path: str | None = None,
-    token: str | None = None,
 ) -> Generator[EventFrame, None, None]:
     """Yield each matching event as it arrives (a synchronous generator).
 
@@ -403,7 +400,7 @@ def subscribe(
     semantics (use :func:`wait_for`).
     """
     composed = _resolve_stream_predicate(match, source, to, first_of)
-    handle = open_subscriber(since=since, socket_path=socket_path, token=token)
+    handle = open_subscriber(since=since, socket_path=socket_path)
     try:
         while True:
             event = _drain_one(handle, composed, deadline_seconds=None)
@@ -423,7 +420,6 @@ async def asubscribe(
     first_of: Sequence[str] | None = None,
     since: str | None = None,
     socket_path: str | None = None,
-    token: str | None = None,
 ) -> AsyncIterator[EventFrame]:
     """Async generator yielding each matching event (for async agents).
 
@@ -443,7 +439,7 @@ async def asubscribe(
     # _STREAM_DONE}. Opened in the coroutine (not the worker) so teardown can
     # close the socket to unblock the worker's blocking read.
     output: asyncio.Queue[object] = asyncio.Queue(maxsize=_ASUBSCRIBE_QUEUE_MAXSIZE)
-    handle: SubscriberHandle = open_subscriber(since=since, socket_path=socket_path, token=token)
+    handle: SubscriberHandle = open_subscriber(since=since, socket_path=socket_path)
 
     def _put(item: object) -> bool:
         """Blocking hand-off into the loop's queue -- real backpressure.

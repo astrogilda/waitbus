@@ -60,9 +60,10 @@ def isolated_subprocess_env(tmp_path: Path, **extra: str) -> tuple[dict[str, str
     """Build a subprocess env carrying the isolated WAITBUS_*_DIR triple.
 
     The subprocess-shaped twin of the in-process ``serve_dirs`` fixture:
-    creates state/runtime/config under ``tmp_path``, strips the ambient
-    credential dirs, and returns ``(env, dirs)`` so callers can layer
-    test-specific overrides via ``extra``.
+    creates state/runtime/config under ``tmp_path`` and returns
+    ``(env, dirs)`` so callers can layer test-specific overrides via
+    ``extra``. The per-test state dir has no ``secrets.json``, so the
+    subprocess starts secret-free unless a caller stages one.
     """
     dirs = {
         "state": tmp_path / "state",
@@ -71,7 +72,7 @@ def isolated_subprocess_env(tmp_path: Path, **extra: str) -> tuple[dict[str, str
     }
     for d in dirs.values():
         d.mkdir(exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if k not in ("CREDENTIALS_DIRECTORY", "WAITBUS_CREDS_DIR")}
+    env = dict(os.environ)
     env.update(
         {
             "WAITBUS_STATE_DIR": str(dirs["state"]),

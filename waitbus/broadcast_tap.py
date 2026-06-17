@@ -6,7 +6,7 @@ for operator smoke-testing: "is my broadcast bus sending events at all?"
 
 Exit codes:
   0  Clean shutdown (SIGINT, ``--count`` reached, connection closed by daemon).
-  2  Startup failure (daemon not running, token required but not configured).
+  2  Startup failure (daemon not running).
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from ._broadcast_sub import (
     emit_frame,
     open_subscriber,
 )
-from ._secrets import SecretNotConfigured
 from .cli._shared import _exit_with_error, run_typer_app
 
 _app = typer.Typer(
@@ -96,8 +95,6 @@ def _tap(
         )
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc))
 
     # tap is an unbounded smoke-test stream: no deadline (None), exit
     # only on --count, EOF, or SIGINT. A thin adapter over the shared

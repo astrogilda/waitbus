@@ -287,9 +287,8 @@ def test_load_filters_propagates_provided_fields(monkeypatch: pytest.MonkeyPatch
     from waitbus import _config as _config_mod
 
     _config_mod._reset_for_test()
-    # Token lives in systemd-creds (not the operator-edited TOML), so it is
-    # intentionally absent from the subscribe envelope here. broadcast.py's
-    # _lookup_token() reads it via _secrets at daemon startup.
+    # The subscribe envelope carries no token field (the broadcast bus has no
+    # application-level token; same-UID peer-cred is the ingress boundary).
     assert mcp_mod._load_filters() == {
         "filters": ["org/repo"],
         "event_types": ["workflow_run"],

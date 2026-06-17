@@ -42,7 +42,6 @@ from ._broadcast_sub import (
     open_subscriber,
 )
 from ._paths import db_path, ensure_state_dirs
-from ._secrets import SecretNotConfigured
 from ._terminal import FAILURE_CONCLUSIONS, SUCCESS_CONCLUSION
 
 REMOTE_RE = re.compile(r"^(?:https?://github\.com/|git@github\.com:)(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?/?$")
@@ -251,12 +250,11 @@ def _resolve_owner_repo(args: argparse.Namespace) -> tuple[str, str] | int:
     return owner, repo
 
 
-def _report_subscribe_error(exc: BroadcastConnectionError | SecretNotConfigured) -> int:
+def _report_subscribe_error(exc: BroadcastConnectionError) -> int:
     """Write a clean one-line error for a failed subscribe/connection and return 2.
 
-    BroadcastConnectionError (and its token/version/lag reject subclasses)
-    carries a remediation hint; SecretNotConfigured has a self-contained
-    message, so getattr yields "".
+    BroadcastConnectionError (and its version/lag reject subclasses) carries
+    a remediation hint.
     """
     detail = getattr(exc, "remediation", "")
     sys.stderr.write(f"pr_monitor: {exc} {detail}".rstrip() + "\n")
@@ -370,7 +368,7 @@ def main(
             filters=[f"{owner}/{repo}"],
             event_types=["workflow_job"],
         )
-    except (BroadcastConnectionError, SecretNotConfigured) as exc:
+    except BroadcastConnectionError as exc:
         return _report_subscribe_error(exc)
 
     with _db.connect(db_path(), readonly=True) as conn:

@@ -35,33 +35,41 @@ operator's user account.
 - **HMAC-SHA256 verification** of all inbound webhook deliveries on the
   loopback `:9000` listener:
   - `/webhook` (GitHub deliveries): HMAC keyed on the
-    `github-webhook-secret` credential decrypted into
-    `$CREDENTIALS_DIRECTORY/github-webhook-secret` by systemd.
+    `github-webhook-secret` secret read from the 0600 `secrets.json`.
   - `/alertmanager`, `/watchdog` (Prometheus deliveries): HMAC keyed on
-    the `alertmanager-hmac` credential, same delivery mechanism.
+    the `alertmanager-hmac` secret, same delivery mechanism.
 - **Peer-credential UID check** on every connection to the AF_UNIX
   broadcast socket — only connections from the daemon's own UID are
   accepted. Linux uses `SO_PEERCRED` (returns the connecting peer's
   `struct ucred`); macOS uses `getpeereid()` via ctypes (returns the
   EUID + EGID), matching dbus-on-Darwin's documented posture. See the
   "macOS peer-credential model" section below for the
-  `LOCAL_PEERPID`-not-used rationale.
-- **Optional credential-token-on-connect** for the broadcast daemon:
-  when the `broadcast-token` credential is present in
-  `$CREDENTIALS_DIRECTORY`, every subscribe envelope must include a
-  matching `token` field (constant-time compare).
-- **Bounded token-failure disclosure.** On a token mismatch the daemon
-  writes a single `subscribe_rejected` frame (see CONSUMER_API.md §3)
-  before closing, so an honest operator gets a real auth error instead
-  of a bare EOF. This is not an information leak: the SO_PEERCRED UID
-  gate runs at accept time, *before* the subscribe frame is read, so
-  any peer reaching the token check is already proven to run as the
-  daemon's own UID (and AF_UNIX exposes no network surface). The reply
-  is best-effort and time-bounded (2s `sock_sendall`) so a slow or
-  half-dead peer cannot stall the accept loop. Every pre-token and
-  request-shape reject (peer-cred UID mismatch, receive timeout, bad
-  JSON, non-object envelope, bad filter/event_type/since, lag-limit)
-  remains silent-EOF — operators debug those via the daemon's
+  `LOCAL_PEERPID`-not-used rationale. This kernel-attested same-UID
+  check is the entire broadcast ingress boundary: there is **no
+  application-level subscribe token**, because any process that can
+  reach the socket is already proven same-UID, and a bearer token would
+  only re-check an identity the kernel has already attested.
+- **At-rest secret protection is delegated to host full-disk encryption
+  (FileVault / LUKS); local secrets rely on UNIX DAC 0600 files;
+  UNIX-socket IPC relies on kernel peer-cred (SO_PEERCRED /
+  LOCAL_PEERCRED).** Secrets live in one 0600 `secrets.json` under the
+  state dir, readable only by the owning user; a lifted disk image is
+  covered by the host FDE the operator already runs. waitbus adds no
+  app-level encryption layer (that would be a second key on the same
+  disk — no defense an attacker with the disk image cannot also lift),
+  matching the posture of `gh auth`, `aws`, and `docker login`.
+- **Bounded version-failure disclosure.** On an unsupported wire
+  `proto` the daemon writes a single `subscribe_rejected` frame (see
+  CONSUMER_API.md §3) before closing, so an honest operator gets a real
+  protocol error instead of a bare EOF. This is not an information leak:
+  the SO_PEERCRED UID gate runs at accept time, *before* the subscribe
+  frame is read, so any peer reaching the version check is already
+  proven to run as the daemon's own UID (and AF_UNIX exposes no network
+  surface). The reply is best-effort and time-bounded (2s
+  `sock_sendall`) so a slow or half-dead peer cannot stall the accept
+  loop. Every request-shape reject (peer-cred UID mismatch, receive
+  timeout, bad JSON, non-object envelope, bad filter/event_type/since,
+  lag-limit) remains silent-EOF — operators debug those via the daemon's
   structured logs, not a client-visible error channel.
 - **Filter-string regex validation** on the broadcast subscribe path
   prevents shell-metachar injection in filter values.
@@ -104,7 +112,7 @@ network surfaces are:
 
 - the **optional** inbound webhook listener on loopback
   (`127.0.0.1:9000`, HMAC-verified), which only receives;
-- local OS keyring / `systemd-creds` access for credential storage;
+- local 0600 `secrets.json` access for secret storage (no network);
 - the **opt-in** ETag polling fallback, which calls the GitHub API only
   for the repos the operator explicitly lists in `watched_repos.txt`; and
 - the **opt-in** broadcast-daemon metrics endpoint (`WAITBUS_METRICS_PORT`
@@ -154,49 +162,49 @@ operational mitigation; the
 two-tier wire fixture under `tests/data/mcp_wire_*.jsonl` is the
 automated regression fence.
 
-### Secret storage: systemd-creds (Linux daemons)
+### Secret storage: a 0600 JSON file
 
-waitbus stores HMAC secrets and the optional broadcast token as
-**host-bound encrypted credentials** managed by `systemd-creds(1)` (ships
-with systemd >= 250). The operator stages each credential once via:
-
-```
-waitbus install-credentials <name> [--value V | --file PATH]
-```
-
-which encrypts the value with `systemd-creds encrypt --name=<name>` and
-writes the ciphertext to `/etc/credstore.encrypted/waitbus.<name>.cred`.
-Each consuming unit declares:
+waitbus stores HMAC secrets in one `secrets.json` object at
+`<state-dir>/secrets.json` (Linux default
+`~/.local/state/waitbus/secrets.json`; macOS
+`~/Library/Application Support/waitbus/secrets.json`), mode 0600. The
+operator stages each secret once via:
 
 ```
-LoadCredentialEncrypted=<name>:/etc/credstore.encrypted/waitbus.<name>.cred
+waitbus install-credentials <name> [--file PATH]   # or value on stdin
 ```
 
-At unit-start systemd decrypts the credential into
-`$CREDENTIALS_DIRECTORY/<name>` (a tmpfs file, mode 0400, owned by the
-service user) before `ExecStart` runs. The daemon reads it via a plain
-`Path.read_text` — there is no in-process key material, no D-Bus
-session, no Python `cryptography` dependency.
+which reads the value from `--file` or stdin (never an inline `--value`
+flag, which would leak to shell history), merges it under the key
+`<name>` without clobbering siblings, and writes the file atomically
+(`secrets.json.tmp` chmod-0600 *before* the payload, then `os.replace`,
+so a concurrent daemon never reads a torn file). The daemon reads it via
+stdlib `json.loads` — there is no in-process key material, no D-Bus
+session, no external tool, no Python `cryptography` dependency.
 
-The decryption key is **host-bound**: by default systemd-creds derives
-it from TPM2 (when `/dev/tpmrm0` is available) or from
-`/var/lib/systemd/credential.secret` (a host-local 256-bit key, mode
-0600, owned by root). An attacker who lifts a disk image off the
-workstation cannot decrypt the credential on another machine.
+**At-rest protection is delegated to host full-disk encryption**
+(FileVault on macOS, LUKS on Linux) **plus UNIX discretionary access
+control** (the 0600 file is readable only by the owning user). waitbus
+deliberately adds no app-level encryption layer: an app key sealed next
+to the ciphertext on the same disk is no defense against an attacker who
+can lift the disk image (they lift the key too), and host FDE already
+covers the lifted-image threat. This matches the posture of `gh auth`,
+`aws`, and `docker login`, which all rely on 0600 files + host FDE
+rather than a redundant app-level cipher. A future always-on server
+deployment with a TPM can re-add a host-sealed backend behind the same
+one-function `_secrets.get_secret` seam without a daemon rewrite.
 
 The threat model is **single-user single-workstation**:
 
-- **In scope.** Confidentiality at rest on disk (TPM2 / host-key sealing
-  via systemd-creds) and confidentiality on the daemon's IPC path
-  (`$CREDENTIALS_DIRECTORY` is a per-unit tmpfs only the service's UID
-  can read).
+- **In scope.** Confidentiality at rest on disk (host FDE) and
+  confidentiality of the secrets file on a multi-user host (0600 DAC,
+  readable only by the owning user).
 - **Out of scope.** A same-UID adversary (e.g., malicious shell command
-  the operator runs) can read `$CREDENTIALS_DIRECTORY` of any unit that
-  shares its UID and can call `waitbus install-credentials` to
-  rotate. The SQLite event store at the platformdirs-resolved state
-  path (Linux default `~/.local/state/waitbus/github.db`) is
-  `chmod 600` but otherwise relies on the operator's home-directory
-  ACLs.
+  the operator runs) can read `secrets.json` and can call
+  `waitbus install-credentials` to rotate. The SQLite event store at the
+  platformdirs-resolved state path (Linux default
+  `~/.local/state/waitbus/github.db`) is `chmod 600` but otherwise
+  relies on the operator's home-directory ACLs.
 
 ### Events-query SQL passthrough
 

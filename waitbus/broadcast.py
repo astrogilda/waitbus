@@ -18,8 +18,7 @@ Wire protocol (length-prefix framed SOCK_STREAM, both directions):
      "filters": ["owner/repo", "owner/*", "*", ...],
      "event_types": ["workflow_run", "workflow_job",
                      "prometheus_alert", "prometheus_watchdog"],
-     "since": "01HZ...26chars" | null,
-     "token": "..." | null}
+     "since": "01HZ...26chars" | null}
 
   event frame (server -> client):
     <4-byte big-endian length><JSON bytes>
@@ -41,12 +40,12 @@ Wire protocol (length-prefix framed SOCK_STREAM, both directions):
 
 Auth:
 - `SO_PEERCRED` peer UID must equal `os.getuid()`; mismatched callers
-  are closed without reply (single-user-laptop assumption).
-- If the unit declares ``LoadCredentialEncrypted=broadcast-token:...``,
-  the subscribe frame MUST carry a matching ``token`` (constant-time
-  compare); absent credential = no token required. A failed token check
-  (the only post-peer-cred reject) gets one ``subscribe_rejected`` frame
-  before close; every pre-token / request-shape reject stays silent-EOF.
+  are closed without reply (single-user-laptop assumption). The AF_UNIX
+  socket's same-UID peer-credential check is the entire ingress boundary;
+  there is no application-level token (the kernel attests the peer identity
+  the token would have re-checked). Every request-shape reject stays
+  silent-EOF; only an unsupported wire ``proto`` and a lag-limit drop get
+  a ``subscribe_rejected`` frame before close.
 
 Backpressure: non-blocking sockets; on EAGAIN/EWOULDBLOCK the frame
 is dropped for that subscriber only and a per-subscriber lag counter
@@ -65,7 +64,6 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
-import hmac
 import json
 import logging
 import os
@@ -81,7 +79,6 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from . import _config, _db, _paths, _peercred
-from . import _secrets as _secrets
 from ._db import EVENT_COLUMNS, ensure_schema
 from ._doorbell import _IS_LINUX, Doorbell
 from ._frame import (
@@ -201,18 +198,6 @@ FILTER_RE = re.compile(r"^([A-Za-z0-9_.-]+/([A-Za-z0-9_.-]+|\*)|\*)$")
 # and trigger a slow scan over the events table.
 ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 
-# Subscribe-time token length bounds. The token is generated as
-# secrets.token_hex(32) (64 hex chars) elsewhere, so 16..128 is a generous
-# envelope that still rejects empty strings and pathologically large inputs.
-TOKEN_MIN_LEN = 16
-TOKEN_MAX_LEN = 128
-
-BROADCAST_TOKEN_CRED = "broadcast-token"
-"""systemd-creds credential name for the optional subscribe-time bearer
-token. When the unit declares ``LoadCredentialEncrypted=broadcast-token:...``,
-the token is read from ``$CREDENTIALS_DIRECTORY/broadcast-token`` at
-daemon startup; absence means token-less subscribers are accepted."""
-
 logger = logging.getLogger("waitbus.broadcast")
 
 
@@ -224,25 +209,6 @@ def _sd_notify(payload: bytes) -> None:
     import alias (which ``--no-implicit-reexport`` would not re-export).
     """
     _sd_notify_impl(payload)
-
-
-# --- credential token lookup (optional auth) -------------------------------
-
-
-def _lookup_token() -> str | None:
-    """Return the broadcast token from systemd-creds, or None when absent.
-
-    The credential is exposed by the unit's
-    ``LoadCredentialEncrypted=broadcast-token:...`` directive; reading is
-    a plain file read under ``$CREDENTIALS_DIRECTORY``. An unreadable
-    credential file is logged and treated as "no token configured" so
-    the daemon still starts.
-    """
-    try:
-        return _secrets.get_secret(BROADCAST_TOKEN_CRED)
-    except _secrets.SecretNotConfigured as exc:
-        structured(logger, logging.WARNING, "broadcast_token_lookup_failed", error=str(exc))
-        return None
 
 
 # --- peer-credential check --------------------------------------------------
@@ -327,24 +293,13 @@ def _serialize(frame: EventFrame) -> bytes:
         )
 
 
-# The two terminal reject frames the daemon writes back before closing a
+# The terminal reject frames the daemon writes back before closing a
 # rejected subscribe. Each is emitted at most once, only AFTER the accept-time
 # SO_PEERCRED gate has proven the peer is same-UID, so the disclosure leaks
 # nothing to an unauthenticated surface (AF_UNIX has no network surface, and a
 # foreign-UID peer is closed silently before this code is reachable). ``kind``
 # is the control discriminator and never collides with the ``event`` data
 # kind. See docs/CONSUMER_API.md §3.
-_SUBSCRIBE_REJECT_TOKEN_FRAME: Final[bytes] = encode_struct_frame(
-    SubscribeRejectedFrame(
-        reason="token",
-        remediation=(
-            "Stage a matching broadcast-token credential (see "
-            "docs/CONSUMER_API.md §3) and set "
-            "WAITBUS_BROADCAST_TOKEN or "
-            "$CREDENTIALS_DIRECTORY/broadcast-token."
-        ),
-    )
-)
 
 # Written once before close when a client sends an unsupported wire ``proto``.
 # ``supported`` lets a future multi-version client negotiate down.
@@ -562,22 +517,6 @@ async def _recv_subscribe_frame(
         _shutdown_close(client_sock)
         return None
     return msg
-
-
-def _validate_subscribe_token(token: object) -> str | None:
-    """Return the supplied token string, or None when absent.
-
-    Bounds-checks the length envelope; the caller does constant-time
-    comparison against the credential-provisioned secret. Raises ValueError
-    on bad type or out-of-range length.
-    """
-    if token is None:
-        return None
-    if not isinstance(token, str):
-        raise ValueError("token must be a string or null")
-    if not TOKEN_MIN_LEN <= len(token) <= TOKEN_MAX_LEN:
-        raise ValueError(f"token length {len(token)} outside [{TOKEN_MIN_LEN}, {TOKEN_MAX_LEN}]")
-    return token
 
 
 # --- subscriber book-keeping ------------------------------------------------
@@ -847,11 +786,6 @@ class Broadcast:
     ) -> None:
         """Construct daemon state; bind no sockets until ``run`` is awaited.
 
-        Looks up the optional broadcast token from systemd-creds at
-        construction time so an operator rotating the token must
-        restart the daemon to pick up the new value (fail-loud, no
-        silent stale auth).
-
         ``db_path``, ``socket_path`` (the AF_UNIX listener subscribers connect
         to), and ``doorbell_path`` (the wake socket emitters ring) each default
         to their ``_paths`` factory evaluated at construction time, so a
@@ -875,7 +809,6 @@ class Broadcast:
         # startup, advanced per broadcast pass; the daemon streams only rows
         # whose seq exceeds it.
         self.cursor: int = 0
-        self.token: str | None = _lookup_token()
         self.uid: int = os.getuid()
         self.listener_sock: socket.socket | None = None
         self._doorbell: Doorbell | None = None
@@ -1118,17 +1051,15 @@ class Broadcast:
         """Read the subscribe envelope, validate every field, register the subscriber.
 
         A 10-second receive timeout bounds the cost of a peer that
-        connects and then never speaks. Every PRE-token and request-shape
-        reject (recv timeout/OSError, clean pre-subscribe EOF, bad JSON,
-        non-object envelope, bad filter/event_type/since) stays
-        silent-EOF: operators debug via the daemon's structured logs, not
-        a client-side error channel. The ONE exception is the post-peer-
-        cred token failure: the peer is already proven same-UID by the
-        accept-time SO_PEERCRED gate, so a single ``subscribe_rejected``
-        frame (``reason: "token"``) is written best-effort before close
-        so an honest operator gets a real auth error instead of a bare
-        EOF. This covers both ``_check_subscribe_token`` False sub-paths
-        (bad token length AND token mismatch); both are post-peer-cred.
+        connects and then never speaks. Every request-shape reject (recv
+        timeout/OSError, clean pre-subscribe EOF, bad JSON, non-object
+        envelope, bad filter/event_type/since) stays silent-EOF:
+        operators debug via the daemon's structured logs, not a
+        client-side error channel. The ONE pre-ack reject that gets a
+        wire frame is an unsupported wire ``proto`` (``reason:
+        "version"``), written best-effort before close; there is no
+        application-level token check (same-UID is attested by the
+        accept-time SO_PEERCRED gate).
 
         Watermark replay ordering (fixes missed-delivery race):
         1. Register subscriber in self.subscribers FIRST.
@@ -1166,20 +1097,6 @@ class Broadcast:
                 )
             incr("waitbus_subscriber_rejected_total", reason="version")
             structured(logger, logging.WARNING, "subscribe_bad_proto", peer=peer_uid, proto=client_proto)
-            _shutdown_close(client_sock)
-            return
-        if self.token is not None and not self._check_subscribe_token(msg.get("token"), peer_uid):
-            # The peer cleared the accept-time SO_PEERCRED gate (proven
-            # same-UID), so disclosing "your token is wrong" leaks
-            # nothing to an unauthenticated surface. Write the single
-            # reject frame best-effort and bounded (2s) so a slow/half-
-            # dead peer cannot stall the accept loop, then close.
-            with contextlib.suppress(OSError, ConnectionError):
-                await asyncio.wait_for(
-                    loop.sock_sendall(client_sock, _SUBSCRIBE_REJECT_TOKEN_FRAME),
-                    timeout=2.0,
-                )
-            incr("waitbus_subscriber_rejected_total", reason="token")
             _shutdown_close(client_sock)
             return
         try:
@@ -1310,24 +1227,6 @@ class Broadcast:
                     self._close_subscriber(client_sock.fileno(), reason="lag_limit_exceeded")
                     return
 
-    def _check_subscribe_token(self, raw_token: object, peer_uid: int) -> bool:
-        """Constant-time compare against the credential-provisioned token.
-
-        Returns True iff the frame's token field has a well-formed length
-        AND matches the daemon's configured token. The caller closes the
-        client connection on False.
-        """
-        assert self.token is not None
-        try:
-            supplied = _validate_subscribe_token(raw_token)
-        except ValueError as exc:
-            structured(logger, logging.WARNING, "subscribe_bad_token", peer=peer_uid, error=str(exc))
-            return False
-        if supplied is None or not hmac.compare_digest(supplied, self.token):
-            structured(logger, logging.WARNING, "subscribe_token_mismatch", peer=peer_uid)
-            return False
-        return True
-
     def _replay(self, sub: Subscriber, since: str, until_seq: int | None = None) -> bool:
         """Stream rows after the public ULID ``since`` cursor, up to ``until_seq``.
 
@@ -1401,7 +1300,7 @@ class Broadcast:
             with contextlib.suppress(BlockingIOError, OSError):
                 sub.sock.send(reject_frame)
             # The rejected counter is labeled by the WIRE-level reject reason
-            # (token / version / lag_limit_exceeded) — every reason in
+            # (version / lag_limit_exceeded) — every reason in
             # _TERMINAL_REJECT_FRAMES emits the lag-limit wire frame, so the
             # internal trigger (heartbeat vs replay vs fan-out) stays in
             # subscriber_evicted_total above, not here.
@@ -1730,7 +1629,6 @@ class Broadcast:
             db=self.db_path,
             listener=self.socket_path,
             doorbell=self.doorbell_path,
-            token_configured=self.token is not None,
         )
 
         try:

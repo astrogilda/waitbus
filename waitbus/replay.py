@@ -30,7 +30,6 @@ from ._broadcast_sub import (
     emit_frame,
     open_subscriber,
 )
-from ._secrets import SecretNotConfigured
 from .cli._shared import _exit_with_error, run_typer_app
 from .coalesce import coalesce_replay
 
@@ -281,8 +280,6 @@ def _replay(
         )
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc))
 
     if coalesce:
         _stream_coalesced(sub, timeout=timeout, as_json=as_json, cursor=cursor)

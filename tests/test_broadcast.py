@@ -741,50 +741,9 @@ def test_validate_since_cursor_rejects_non_string() -> None:
             broadcast._validate_since_cursor(bad)
 
 
-def test_validate_token_accepts_none() -> None:
-    assert broadcast._validate_subscribe_token(None) is None
-
-
-def test_validate_token_accepts_in_range_length() -> None:
-    token = "x" * 64
-    assert broadcast._validate_subscribe_token(token) == token
-
-
-def test_validate_token_rejects_below_min_length() -> None:
-    with pytest.raises(ValueError):
-        broadcast._validate_subscribe_token("x" * (broadcast.TOKEN_MIN_LEN - 1))
-
-
-def test_validate_token_rejects_above_max_length() -> None:
-    with pytest.raises(ValueError):
-        broadcast._validate_subscribe_token("x" * (broadcast.TOKEN_MAX_LEN + 1))
-
-
-def test_validate_token_rejects_non_string() -> None:
-    bad: object
-    for bad in (42, [], {"x": 1}, True):
-        with pytest.raises(ValueError):
-            broadcast._validate_subscribe_token(bad)
-
-
 # ---------------------------------------------------------------------------
-# Module-level helpers (credential token, sd_notify, peer_uid, summary_for)
+# Module-level helpers (sd_notify, peer_uid, summary_for)
 # ---------------------------------------------------------------------------
-
-
-def test_lookup_token_returns_credential_value() -> None:
-    with pytest.MonkeyPatch().context() as mp:
-        mp.setattr(broadcast._secrets, "get_secret", lambda name: "broadcast-secret-xyz")
-        assert broadcast._lookup_token() == "broadcast-secret-xyz"
-
-
-def test_lookup_token_swallows_secret_not_configured() -> None:
-    def _raise(name: str) -> str:
-        raise broadcast._secrets.SecretNotConfigured("credential unreadable")
-
-    with pytest.MonkeyPatch().context() as mp:
-        mp.setattr(broadcast._secrets, "get_secret", _raise)
-        assert broadcast._lookup_token() is None
 
 
 def test_sd_notify_noop_when_socket_env_unset(
@@ -1402,93 +1361,21 @@ async def test_peercred_rejection(running_daemon: _DaemonPaths, monkeypatch: pyt
 
 
 @pytest.mark.asyncio
-async def test_token_auth_rejection_emits_reject_frame(
-    running_daemon: _DaemonPaths,
-) -> None:
-    """A wrong-token subscribe gets one ``subscribe_rejected`` frame, then EOF.
-
-    The peer cleared the accept-time SO_PEERCRED gate (proven same-UID),
-    so the daemon sends a ``subscribe_rejected`` frame rather than a bare EOF.
-    `_check_subscribe_token` still uses `hmac.compare_digest` for the
-    constant-time compare; the reject path now
-    writes a single ``subscribe_rejected`` / ``reason: "token"`` frame
-    (best-effort, bounded) before closing. After that one frame the next
-    read is a clean EOF — the daemon never streams to a rejected peer.
-    """
-    daemon, paths = running_daemon
-    # The fixture-built daemon has token=None (no keyring entry under test);
-    # install the expected secret post-hoc. _read_subscribe reads
-    # self.token at request time so the mutation is visible to the next
-    # subscribe attempt. Both tokens are within [16, 128] so this
-    # exercises the hmac.compare_digest MISMATCH sub-path specifically
-    # (the bad-length sub-path is covered by the sibling test).
-    daemon.token = "expected-token-0123456789"  # 25 chars
-    reader, writer = await _connect(paths["broadcast"])
-    try:
-        await _subscribe(
-            writer,
-            filters=["*"],
-            token="wrong-token-9876543210",  # 22 chars
-        )
-        frame = await _recv_frame(reader, timeout=2.0)
-        assert frame["kind"] == "subscribe_rejected", frame
-        assert frame["reason"] == "token", frame
-        assert frame["remediation"], "remediation hint must be present"
-        assert "broadcast-token" in frame["remediation"]
-        # Exactly one frame, then a clean EOF — no event stream follows.
-        tail = await asyncio.wait_for(reader.read(1024), timeout=1.5)
-        assert tail == b"", f"expected EOF after the reject frame; got {tail!r}"
-    finally:
-        writer.close()
-        with contextlib.suppress(ConnectionResetError, BrokenPipeError):
-            await writer.wait_closed()
-
-
-@pytest.mark.asyncio
-async def test_token_bad_length_also_emits_reject_frame(
-    running_daemon: _DaemonPaths,
-) -> None:
-    """The other ``_check_subscribe_token`` False sub-path (bad length).
-
-    A too-short token fails `_validate_subscribe_token` with a ValueError
-    inside `_check_subscribe_token`, returning False. That is still a
-    post-peer-cred reject, so it also gets the single reject frame.
-    """
-    daemon, paths = running_daemon
-    daemon.token = "expected-token"
-    reader, writer = await _connect(paths["broadcast"])
-    try:
-        # Length 3 is below TOKEN_MIN_LEN (16): bad-length sub-path.
-        await _subscribe(writer, filters=["*"], token="abc")
-        frame = await _recv_frame(reader, timeout=2.0)
-        assert frame["kind"] == "subscribe_rejected", frame
-        assert frame["reason"] == "token", frame
-        tail = await asyncio.wait_for(reader.read(1024), timeout=1.5)
-        assert tail == b"", f"expected EOF; got {tail!r}"
-    finally:
-        writer.close()
-        with contextlib.suppress(ConnectionResetError, BrokenPipeError):
-            await writer.wait_closed()
-
-
-@pytest.mark.asyncio
 async def test_peercred_reject_stays_silent_no_frame(
     running_daemon: _DaemonPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A foreign-UID peer is closed silently — NO reject frame is leaked.
 
-    The reject frame is gated behind the post-peer-cred token branch
-    precisely so a peer that failed the SO_PEERCRED gate (unauthenticated
-    surface) learns nothing. This pins that the peer-cred reject did not
-    regress into the new error channel.
+    A peer that fails the SO_PEERCRED gate (an unauthenticated surface)
+    must learn nothing: the daemon closes it without any wire frame. This
+    pins that the peer-cred reject stays silent-EOF.
     """
     daemon, paths = running_daemon
-    daemon.token = "expected-token"
     foreign_uid = daemon.uid + 1
     monkeypatch.setattr(broadcast, "_peer_uid", lambda _sock: foreign_uid)
     reader, writer = await _connect(paths["broadcast"])
     try:
-        await _subscribe(writer, filters=["*"], token="wrong-token")
+        await _subscribe(writer, filters=["*"])
         try:
             data = await asyncio.wait_for(reader.read(1024), timeout=1.5)
         except ConnectionResetError:
@@ -1509,22 +1396,19 @@ async def test_bad_filter_reject_stays_silent_no_frame(
 ) -> None:
     """A request-shape reject (bad filter) stays silent-EOF — no frame.
 
-    Only the token branch emits a frame; every pre-token / request-shape
-    reject keeps the silent-EOF posture so operators debug via logs.
+    Only an unsupported wire ``proto`` emits a frame at subscribe time;
+    every other request-shape reject keeps the silent-EOF posture so
+    operators debug via logs.
     """
-    daemon, paths = running_daemon
-    # Token must be within [16, 128] so the token gate PASSES here and
-    # the bad-filter ValueError path is the one that actually rejects.
-    good_token = "expected-token-0123456789"  # 25 chars
-    daemon.token = good_token
+    _daemon, paths = running_daemon
     reader, writer = await _connect(paths["broadcast"])
     try:
-        # Correct token (clears the token gate) but a bad filter so the
-        # ValueError reject path runs — that path must stay silent.
-        await _subscribe(writer, filters=["../etc/passwd"], token=good_token)
+        # A bad filter triggers the ValueError reject path, which must
+        # stay silent (no wire frame).
+        await _subscribe(writer, filters=["../etc/passwd"])
         data = await asyncio.wait_for(reader.read(1024), timeout=1.5)
         assert data == b"", (
-            f"bad-filter reject must stay silent-EOF (only the token branch emits a frame); received {data!r}"
+            f"bad-filter reject must stay silent-EOF (only a version reject emits a frame); received {data!r}"
         )
     finally:
         writer.close()
