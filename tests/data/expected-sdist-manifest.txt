@@ -109,6 +109,7 @@ tests/test_listener.py
 tests/test_listener_secret_loaders.py
 tests/test_listener_threading.py
 tests/test_log.py
+tests/test_mcp_agent_messaging.py
 tests/test_mcp_coverage.py
 tests/test_mcp_e2e.py
 tests/test_mcp_event_payload_cap.py

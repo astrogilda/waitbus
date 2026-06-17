@@ -40,6 +40,14 @@ URI_CURRENT: str = "waitbus://current"
 URI_REPO_PREFIX: str = "waitbus://repo/"
 URI_EVENT_PREFIX: str = "waitbus://event/"
 URI_EVENT_RAW_SUFFIX: str = "/raw"
+#: Agent-message doorbell prefix. ``waitbus://agent/{name}`` is BOTH
+#: subscribable (it fires the agent_message doorbell ping) AND readable
+#: (the read returns a short stub directing the client to the
+#: read_agent_messages tool -- never the message bodies, which would dump
+#: the whole inbox and blow the context window). The doorbell is the only
+#: subscribable resource whose read does NOT mirror its subscription
+#: payload; the design's hard rule is that the inbox is pulled, not pushed.
+URI_AGENT_PREFIX: str = "waitbus://agent/"
 
 _PENDING_QUEUE_MAX: int = 1000
 
@@ -120,11 +128,27 @@ def _uri_matches_frame(uri: str, owner: str, repo: str) -> bool:
     return pat_repo == "*" or pat_repo == repo
 
 
+def parse_agent_uri(uri: str) -> str | None:
+    """Extract the agent name from a ``waitbus://agent/{name}`` URI, or None.
+
+    Returns the (non-empty) name segment verbatim. The name is a
+    self-asserted agent address under the same-UID trust model, so it is
+    not validated against any registry here -- a name that does not match
+    any committed message simply never receives a doorbell ping.
+    """
+    if not uri.startswith(URI_AGENT_PREFIX):
+        return None
+    name = uri[len(URI_AGENT_PREFIX) :]
+    return name or None
+
+
 def is_subscribable_uri(uri: str) -> bool:
     """Return True iff the URI is in the subscribable subset.
 
     Event URIs (``waitbus://event/{ulid}``) are read-only by design and
-    do not participate in the subscription registry.
+    do not participate in the subscription registry. Agent doorbells
+    (``waitbus://agent/{name}``) ARE subscribable -- the subscription is
+    what arms the doorbell ping.
     """
     if uri == URI_CURRENT:
         return True
@@ -132,7 +156,7 @@ def is_subscribable_uri(uri: str) -> bool:
         path = uri[len(URI_REPO_PREFIX) :]
         parts = path.split("/")
         return len(parts) == 2 and all(parts)
-    return False
+    return parse_agent_uri(uri) is not None
 
 
 def is_readable_uri(uri: str) -> bool:
@@ -147,7 +171,14 @@ def is_readable_uri(uri: str) -> bool:
     # URI_EVENT_PREFIX prefix, so the prefix check below admits both.
     # The /raw form remains undiscoverable (absent from list_resources
     # and list_resource_templates) and unsubscribable by design.
-    return uri == URI_CURRENT or uri.startswith(URI_REPO_PREFIX) or uri.startswith(URI_EVENT_PREFIX)
+    # waitbus://agent/{name} is readable too: its read returns the
+    # read_agent_messages stub, NOT the inbox.
+    return (
+        uri == URI_CURRENT
+        or uri.startswith(URI_REPO_PREFIX)
+        or uri.startswith(URI_EVENT_PREFIX)
+        or uri.startswith(URI_AGENT_PREFIX)
+    )
 
 
 def parse_repo_uri(uri: str) -> tuple[str, str] | None:
@@ -197,6 +228,39 @@ def parse_event_raw_uri(uri: str) -> str | None:
         return None
     ulid = tail[: -len(URI_EVENT_RAW_SUFFIX)]
     return ulid or None
+
+
+def agent_doorbell_uri_for_session(
+    subscriptions: set[str],
+    msg_to: str,
+) -> str | None:
+    """Return the ONE agent-doorbell URI to ping a session for, or None.
+
+    The dedup contract (SWARM_DESIGN.md "Wildcard fan-out + dedup"): a
+    session receives at most one ``resources/updated`` ping per committed
+    ``agent_message``, regardless of how many ``waitbus://agent/...``
+    subscriptions it holds.
+
+    - A directed message (``msg_to != "*"``) pings the session iff it
+      holds ``waitbus://agent/{msg_to}``; that exact URI is returned.
+    - A broadcast message (``msg_to == "*"``) pings the session iff it
+      holds ANY ``waitbus://agent/...`` subscription; a single
+      deterministic URI (the lexicographically smallest such subscription)
+      is returned so the same session is pinged exactly once with a stable
+      URI rather than once per agent subscription it holds.
+
+    ``waitbus://current`` and ``waitbus://repo/...`` subscriptions are
+    deliberately ignored here: an ``agent_message`` is partitioned out of
+    the CI stream, so a CI-watching subscriber is never double-pinged.
+    """
+    agent_subs = sorted(uri for uri in subscriptions if uri.startswith(URI_AGENT_PREFIX))
+    if not agent_subs:
+        return None
+    if msg_to != "*":
+        target = f"{URI_AGENT_PREFIX}{msg_to}"
+        return target if target in subscriptions else None
+    # Broadcast: one stable ping for the whole session.
+    return agent_subs[0]
 
 
 def assert_no_session_back_reference() -> None:

@@ -10,6 +10,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.5]
+
+### Added
+
+- Agent-to-agent messaging over MCP. A new `emit_agent_message` tool sends a
+  message to a named agent (or `*` for everyone), and the recipient reads it
+  with the cursor-paginated `read_agent_messages` tool. A `waitbus://agent/{name}`
+  resource acts as a doorbell that pings when a message arrives, so the agent
+  reads only when there is something to read. Messages share the event store but
+  stay out of the default `tail_events` and `waitbus://current` views; `tail_events`
+  gains an `event_types` filter so a client can opt into them. Agent identities are
+  cooperative and self-asserted — the bus is single-user and same-UID, so this is
+  not a security boundary.
+
 ## [0.1.4]
 
 ### Fixed

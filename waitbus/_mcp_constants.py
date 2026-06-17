@@ -67,6 +67,20 @@ TOOL_GET_CI_STATUS: Final[str] = "get_ci_status"
 TOOL_LIST_FAILED_JOBS: Final[str] = "list_failed_jobs"
 TOOL_GET_PR_AGGREGATE: Final[str] = "get_pr_aggregate"
 TOOL_TAIL_EVENTS: Final[str] = "tail_events"
+TOOL_EMIT_AGENT_MESSAGE: Final[str] = "emit_agent_message"
+TOOL_READ_AGENT_MESSAGES: Final[str] = "read_agent_messages"
+
+# === Agent-message event class (single source of truth) ====
+# emit_agent_message hardcodes this event_type and the "agent" source on
+# insert -- the typed lane that keeps agent chatter out of the CI
+# (workflow_run) stream. The same literal lives in waitbus._messaging
+# (the request/respond SDK); the MCP tool and the SDK agree on it here.
+AGENT_MESSAGE_EVENT_TYPE: Final[str] = "agent_message"
+AGENT_MESSAGE_SOURCE: Final[str] = "agent"
+
+# The wildcard recipient: a message addressed to "*" is delivered to every
+# agent that holds an agent doorbell subscription.
+AGENT_BROADCAST_RECIPIENT: Final[str] = "*"
 
 # Bound on tail_events.max_wait_seconds. Cursor (the editor client) issues a
 # hard cancel at 5 minutes per its MCP integration; staying comfortably under
@@ -102,3 +116,9 @@ The field's ``maximum`` is ``TAIL_EVENTS_MAX_WAIT_CAP_SECONDS``; this
 default sits well below that cap so callers that omit the field do not
 inadvertently tie up the MCP channel for nearly five minutes.
 """
+
+READ_AGENT_MESSAGES_DEFAULT_LIMIT: Final[int] = 100
+"""Default number of messages returned by ``read_agent_messages``."""
+
+READ_AGENT_MESSAGES_MAX_LIMIT: Final[int] = 1000
+"""Hard cap on ``read_agent_messages`` ``limit`` (mirrors ``tail_events``)."""

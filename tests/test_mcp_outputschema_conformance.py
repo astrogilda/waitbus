@@ -24,10 +24,13 @@ from typing import Any
 import pytest
 
 from waitbus import mcp as mcp_mod
+from waitbus._mcp_constants import TOOL_EMIT_AGENT_MESSAGE
 from waitbus._mcp_models import (
     schema_ci_status,
+    schema_emit_agent_message,
     schema_failed_jobs,
     schema_pr_aggregate,
+    schema_read_agent_messages,
     schema_tail_events,
 )
 
@@ -36,6 +39,8 @@ _SCHEMA_BUILDERS: list[Callable[[], dict[str, Any]]] = [
     schema_failed_jobs,
     schema_pr_aggregate,
     schema_tail_events,
+    schema_read_agent_messages,
+    schema_emit_agent_message,
 ]
 
 
@@ -53,10 +58,28 @@ def test_output_schema_has_top_level_object_type(builder: Callable[[], dict[str,
     )
 
 
-def test_every_tool_advertises_read_only_hint() -> None:
-    """All four advertised tools carry annotations.readOnlyHint is True."""
+def test_every_tool_advertises_a_read_only_hint() -> None:
+    """Every advertised tool sets readOnlyHint explicitly.
+
+    The five read tools set it True; the one writer (emit_agent_message)
+    sets it False so a client surfaces a write-confirmation prompt for it.
+    No tool may leave the hint unset.
+    """
     tools = mcp_mod._tool_definitions()
-    assert len(tools) == 4
+    assert len(tools) == 6
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} missing annotations"
-        assert tool.annotations.readOnlyHint is True, f"{tool.name} must set readOnlyHint=True"
+        expected = tool.name != TOOL_EMIT_AGENT_MESSAGE
+        assert tool.annotations.readOnlyHint is expected, (
+            f"{tool.name} readOnlyHint must be {expected}; got {tool.annotations.readOnlyHint}"
+        )
+
+
+def test_emit_agent_message_is_the_only_writer() -> None:
+    """emit_agent_message is readOnlyHint=False; it is not idempotent."""
+    tools = {t.name: t for t in mcp_mod._tool_definitions()}
+    emit_tool = tools[TOOL_EMIT_AGENT_MESSAGE]
+    assert emit_tool.annotations is not None
+    assert emit_tool.annotations.readOnlyHint is False
+    # No idempotentHint: every send is a distinct message.
+    assert emit_tool.annotations.idempotentHint is None
