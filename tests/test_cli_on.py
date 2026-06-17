@@ -520,12 +520,11 @@ def test_on_exits_2_when_daemon_absent(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert "broadcast" in (result.stdout + str(result.stderr or "")).lower()
 
 
-def test_on_exits_2_when_credentials_misconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A SecretNotConfigured from open_subscriber is a startup error (exit 2)."""
-    from waitbus._secrets import SecretNotConfigured
+def test_on_exits_2_when_open_subscriber_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A BroadcastConnectionError from open_subscriber is a startup error (exit 2)."""
 
     def _raise(**_kw: object) -> None:
-        raise SecretNotConfigured("broadcast token backend not configured")
+        raise BroadcastConnectionError("daemon down", remediation="start the broadcast daemon")
 
     monkeypatch.setattr(on_mod, "open_subscriber", _raise)
     _register_agent()
@@ -550,7 +549,7 @@ def test_on_exits_2_when_subscribe_ack_rejected(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(on_mod, "open_subscriber", lambda **_kw: SubscriberHandle(sock=client))
 
     def _reject(_sub: object) -> None:
-        raise BroadcastConnectionError("subscribe rejected", remediation="check the token")
+        raise BroadcastConnectionError("subscribe rejected", remediation="send proto: 1")
 
     monkeypatch.setattr(on_mod, "read_subscribe_ack", _reject)
     _register_agent()

@@ -43,7 +43,6 @@ from ._broadcast_sub import (
     read_subscribe_ack,
 )
 from ._duration import parse_duration
-from ._secrets import SecretNotConfigured
 from ._terminal import entity_key
 from .cli._shared import _exit_with_error, run_typer_app, use_colour
 
@@ -177,8 +176,6 @@ def _run(deadline_seconds: float | None, max_frames: int | None) -> int:
         sub = open_subscriber()
     except BroadcastConnectionError as exc:
         _exit_with_error(str(exc), hint=exc.remediation, code=EXIT_STARTUP)
-    except SecretNotConfigured as exc:
-        _exit_with_error(str(exc), code=EXIT_STARTUP)
 
     try:
         read_subscribe_ack(sub)

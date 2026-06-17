@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import stat
 import struct
 import subprocess
 import sys
@@ -49,12 +48,12 @@ def _sub_version_callback(value: bool) -> None:
 # constants
 # ---------------------------------------------------------------------------
 
-REQUIRED_BINS: tuple[str, ...] = ("systemctl", "systemd-creds")
+REQUIRED_BINS: tuple[str, ...] = ("systemctl",)
 """Binaries every waitbus workflow assumes are present on PATH.
 `gh` is not required at install time — it is only needed by the
 per-repo forwarder, which fails clearly when invoked without it.
-``systemd-creds`` (shipped with systemd >= 250) is needed by
-``waitbus install-credentials``."""
+Secrets are stored in a plain 0600 JSON file (``_secrets``), so no
+external credential tool is required at install time."""
 
 # Anchored regex used to identify wheel-owned units in
 # ~/.config/systemd/user/. Replaces the prior fnmatch-style "waitbus-*"
@@ -74,24 +73,14 @@ WATCHED_REPOS_TEMPLATE = """\
 
 ETAG_STATE_TEMPLATE = "{}\n"
 
-CREDSTORE_DIR = Path("/etc/credstore.encrypted")
-"""Host-wide encrypted credential store. systemd-creds(1) decrypts files
-in this directory at unit-start time and exposes them as plaintext files
-under ``$CREDENTIALS_DIRECTORY`` to the running service. The directory
-is host-keyed via TPM2 or ``/var/lib/systemd/credential.secret``; an
-attacker who lifts the encrypted blob off the disk image cannot decrypt
-it on another machine."""
-
 KNOWN_CREDENTIALS: tuple[tuple[str, str], ...] = (
     ("github-webhook-secret", "GitHub webhook HMAC secret (load-bearing for the listener)."),
     ("alertmanager-hmac", "Alertmanager / watchdog HMAC secret (optional)."),
-    ("broadcast-token", "Broadcast subscribe-time bearer token (optional)."),
 )
 """Credentials the daemon stack reads. The first element is the
-credential name (used in ``LoadCredentialEncrypted=<name>:<path>`` and as
-the filename under ``$CREDENTIALS_DIRECTORY``). New credentials must be
-added here AND to the matching unit file's ``LoadCredentialEncrypted=``
-line."""
+credential name (used as the key in the ``secrets.json`` object). New
+credentials are added here and read at runtime via
+``_secrets.get_secret(<name>)``."""
 
 LAUNCHD_LABEL_PREFIX = "dev.waitbus."
 """Reverse-DNS Label prefix used on every shipped LaunchAgent plist. The
@@ -348,16 +337,21 @@ def _apply_unit_change(
 
 
 def _enable_units(units: list[str], *, dry_run: bool) -> None:
-    """Run `systemctl --user enable --now` for the units that declare [Install].
+    """Run `systemctl --user enable --now` for the always-on units.
 
     Several waitbus units intentionally omit [Install] (e.g.
     waitbus-broadcast.service) because their lifecycle is driven by
     socket activation; enabling those would form boot-ordering cycles.
-    The hard-coded set below names every unit that DOES declare
-    [Install]; new units must be added here when introduced.
+
+    ``waitbus-listener.service`` is OPT-IN and is deliberately NOT in
+    this set: the default install brings up the broadcast/wait core with
+    no open TCP ``:9000`` and no webhook secret. The listener is enabled
+    explicitly when the operator stages a ``github-webhook-secret`` via
+    ``waitbus install-credentials`` (see ``cli/install/credentials.py``).
+    The set below names every always-on unit that declares [Install];
+    new always-on units must be added here when introduced.
     """
     enableable = (
-        "waitbus-listener.service",
         "waitbus-broadcast.socket",
         "waitbus-watchdog.timer",
         "waitbus-etag-poll.timer",
@@ -619,37 +613,29 @@ def _check_paths() -> list[str]:
 
 
 def _check_credentials() -> list[str]:
-    """Verify the credential staging dir holds entries for the known names.
+    """Verify the JSON secrets file holds entries for the known names.
 
-    Doctor runs as the operator, not as the daemon, so ``$CREDENTIALS_DIRECTORY``
-    is not set; the check inspects the encrypted credential store on disk
-    (``/etc/credstore.encrypted/waitbus.<name>.cred``) instead of
-    decrypted values. Decrypt-time failures (TPM unsealing, host-key
-    rotation) cannot be detected from the operator account.
+    Doctor runs as the operator, whose own ``secrets.json`` (0600 in the
+    state dir) is operator-readable, so the check inspects per-key
+    presence directly. A malformed / wrong-mode secrets file surfaces as
+    a single ``SecretNotConfigured`` and is reported as a hard error.
     """
+    from .. import _secrets
+
     issues: list[str] = []
     typer.echo("[credentials]")
+    path = _secrets.secrets_path()
+    try:
+        present_names = {name for name, _desc in KNOWN_CREDENTIALS if _secrets.get_secret(name) is not None}
+    except _secrets.SecretNotConfigured as exc:
+        typer.secho(f"  secrets file unusable: {exc}", fg=typer.colors.YELLOW, err=True)
+        typer.echo("")
+        return [f"secrets file unusable: {exc}"]
     for name, _desc in KNOWN_CREDENTIALS:
-        path = CREDSTORE_DIR / f"waitbus.{name}.cred"
-        try:
-            present = stat.S_ISREG(path.stat().st_mode)
-        except FileNotFoundError:
-            present = False
-        except OSError as exc:
-            # The system credstore is root-owned 0700 by design (systemd-creds),
-            # so the operator account lacks search permission to stat individual
-            # entries. Path.stat() raises PermissionError on every Python
-            # version; Path.is_file() is the trap -- whether it swallows
-            # the error and returns False or propagates it varies across
-            # Python versions, so stat() explicitly and report the entry
-            # as indeterminate rather than crashing doctor or
-            # false-flagging the credential MISSING.
-            typer.echo(f"  {name:32} indeterminate ({CREDSTORE_DIR} not operator-readable: {exc.strerror or exc})")
-            continue
-        if present:
-            typer.echo(f"  {name:32} present at {path}")
+        if name in present_names:
+            typer.echo(f"  {name:32} present in {path}")
         else:
-            typer.secho(f"  {name:32} MISSING at {path}", fg=typer.colors.YELLOW, err=True)
+            typer.secho(f"  {name:32} MISSING in {path}", fg=typer.colors.YELLOW, err=True)
             issues.append(f"credential {name} missing — run `waitbus install-credentials {name}`")
     typer.echo("")
     return issues
@@ -834,22 +820,25 @@ def _migrate_legacy_state_if_needed() -> None:
 
 def _read_credential_value(
     *,
-    inline: str | None,
+    inline: str | None = None,
     source_file: Path | None,
     name: str,
 ) -> str:
-    """Resolve the credential's plaintext value from --value, --file, or stdin."""
-    if inline is not None and source_file is not None:
-        raise typer.BadParameter("--value and --file are mutually exclusive")
+    """Resolve the credential's plaintext value from --file or stdin.
+
+    ``--value`` was removed (shell-history leak); the value comes from
+    ``--file <path>`` or, when absent, stdin. The ``inline`` parameter is
+    retained only as a typed seam and must be ``None``.
+    """
     if inline is not None:
-        return inline
+        raise typer.BadParameter("inline credential values are not supported; use --file or stdin")
     if source_file is not None:
         try:
             return source_file.read_text(encoding="utf-8")
         except OSError as exc:
             raise typer.BadParameter(f"--file {source_file} unreadable: {exc}") from exc
     if sys.stdin.isatty():
-        typer.echo(f"Reading {name} from stdin (Ctrl-D to end); use --value or --file to script.", err=True)
+        typer.echo(f"Reading {name} from stdin (Ctrl-D to end); use --file to script.", err=True)
     return sys.stdin.read()
 
 

@@ -18,12 +18,9 @@ WorkingDirectory=%S/waitbus
 StandardOutput=journal
 StandardError=journal
 
-# Optional broadcast-time bearer token. Decrypted by systemd at
-# unit-start and read by _secrets.get_secret. Absent credential file
-# means token-less subscribers are accepted (single-user-workstation
-# threat model). Stage via:
-#   waitbus install-credentials broadcast-token
-LoadCredentialEncrypted=broadcast-token:/etc/credstore.encrypted/waitbus.broadcast-token.cred
+# No application-level subscribe token: the AF_UNIX broadcast socket's
+# same-UID peer-credential check (SO_PEERCRED) is the entire ingress
+# boundary. No secrets are read by the broadcast daemon.
 
 # Hardening (systemd >= 246).
 PrivateTmp=true

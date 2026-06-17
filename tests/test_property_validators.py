@@ -1,7 +1,7 @@
 """Property-based tests for subscribe-frame validators in broadcast.py.
 
 Covers _validate_subscribe_filters, _validate_subscribe_event_types,
-_validate_since_cursor, and _validate_subscribe_token using Hypothesis.
+and _validate_since_cursor using Hypothesis.
 """
 
 from __future__ import annotations
@@ -142,39 +142,3 @@ def test_since_cursor_invalid_char_raises(prefix: str, bad_char: str) -> None:
     if len(candidate) == 26:
         with pytest.raises(ValueError):
             broadcast._validate_since_cursor(candidate)
-
-
-# --- _validate_subscribe_token --------------------------------------------
-
-
-@given(
-    token=st.text(
-        alphabet=st.characters(
-            whitelist_categories=("Ll", "Lu", "Nd"),
-            whitelist_characters=string.punctuation,
-        ),
-        min_size=broadcast.TOKEN_MIN_LEN,
-        max_size=broadcast.TOKEN_MAX_LEN,
-    ).filter(lambda s: s.isascii())
-)
-@settings(max_examples=80, deadline=500)
-def test_token_valid_length_passes(token: str) -> None:
-    """Any printable-ASCII token in [TOKEN_MIN_LEN, TOKEN_MAX_LEN] must pass."""
-    result = broadcast._validate_subscribe_token(token)
-    assert result == token
-
-
-@given(token=st.text(min_size=0, max_size=broadcast.TOKEN_MIN_LEN - 1))
-@settings(max_examples=50, deadline=500)
-def test_token_too_short_raises(token: str) -> None:
-    """Tokens shorter than TOKEN_MIN_LEN must raise ValueError."""
-    with pytest.raises(ValueError):
-        broadcast._validate_subscribe_token(token)
-
-
-@given(token=st.text(min_size=broadcast.TOKEN_MAX_LEN + 1, max_size=broadcast.TOKEN_MAX_LEN + 50))
-@settings(max_examples=50, deadline=500)
-def test_token_too_long_raises(token: str) -> None:
-    """Tokens longer than TOKEN_MAX_LEN must raise ValueError."""
-    with pytest.raises(ValueError):
-        broadcast._validate_subscribe_token(token)

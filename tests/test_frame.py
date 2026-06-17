@@ -404,7 +404,7 @@ def test_subscribe_rejected_frame_fields_and_kind() -> None:
 
 def test_subscribe_rejected_frame_defaults() -> None:
     """remediation defaults to '' and supported defaults to None."""
-    frame = SubscribeRejectedFrame(reason="token")
+    frame = SubscribeRejectedFrame(reason="version")
     assert frame.remediation == ""
     assert frame.supported is None
     assert frame.kind == "subscribe_rejected"

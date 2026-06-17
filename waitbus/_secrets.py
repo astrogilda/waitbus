@@ -1,125 +1,113 @@
-"""Read-only secret loader with a pluggable backend.
+"""Read-only secret loader backed by a single 0600 JSON file.
 
-Two backends are supported, selected by the
-``WAITBUS_SECRETS_BACKEND`` environment variable:
+Secrets live in one JSON object at ``_paths.state_dir()/secrets.json``,
+written atomically by ``waitbus install-credentials`` (mode 0600). The
+read path is stdlib-only (``json.loads``): no external binary, no
+``cryptography``/``cffi`` closure, no per-unit credential plumbing.
 
-- ``systemd-creds`` (default): credentials are delivered to the daemon
-  by systemd via ``LoadCredentialEncrypted=<name>:<encrypted-path>``
-  directives in each unit. systemd decrypts each credential to a tmpfs
-  file under ``$CREDENTIALS_DIRECTORY`` (one file per credential, name =
-  directive name, mode 0400, owned by the service user) before
-  ``ExecStart`` runs. This module reads those files and returns the
-  contents as Python strings. Writes happen exclusively via the
-  ``waitbus install credentials`` subcommand, which shells out to
-  ``systemd-creds encrypt``; the daemon itself never sees the key.
+At-rest protection is delegated to host full-disk encryption
+(FileVault / LUKS) plus UNIX discretionary access control: the file is
+0600, readable only by the owning user, and a lifted disk image is
+covered by the host FDE the operator already runs. See ``SECURITY.md``
+for the full boundary statement.
 
-- ``age``: credentials are stored as age-encrypted files at
-  ``$WAITBUS_AGE_CREDS_DIR/<name>.age`` and decrypted at read time by
-  shelling out to the ``age`` binary with the identity file at
-  ``$WAITBUS_AGE_IDENTITY``. This backend unblocks Docker, macOS, and
-  other non-systemd deployments where ``LoadCredentialEncrypted=`` is
-  unavailable. age is an optional external tool the operator installs,
-  exactly parallel to systemd-creds being an external tool — the daemon
-  stays stdlib-only on the secret-read path either way.
+Why one JSON file and not the keyring library: the keyring v25 closure
+pulled in ``cryptography`` + ``cffi`` (native Rust + C) which cost
++21.6 MiB RSS at first secret read and ~175 ms cold-import latency. A
+plain 0600 JSON read is lighter than either, not heavier.
 
-The ``WAITBUS_CREDS_DIR`` environment variable is a documented
-test-only override for the systemd-creds backend that takes effect when
-``CREDENTIALS_DIRECTORY`` is unset. It is intended for ``pytest`` and
-local smoke runs only — never set it on a production daemon.
-
-Why not the keyring library: the keyring v25 closure pulled in
-``cryptography`` + ``cffi`` (native Rust + C) which cost +21.6 MiB RSS
-at first secret read and ~175 ms cold-import latency. Both backends keep
-the daemon stdlib-only on the secret-read path.
+The ``_load_secrets`` indirection is the one seam a future host-bound
+backend (e.g. a TPM-sealed store for an always-on server) can re-enter
+without changing ``get_secret`` or any of its callers.
 """
 
 from __future__ import annotations
 
+import json
 import os
-import shutil
-import subprocess
-from pathlib import Path
+import stat
+from functools import lru_cache
+from typing import Any
 
-_AGE_DECRYPT_TIMEOUT_SECONDS = 15
+from . import _paths
 
 
 class SecretNotConfigured(RuntimeError):  # noqa: N818
-    """Raised when a required credential is present but unreadable.
+    """Raised when the secrets file is present but unusable.
 
-    Operator fix: store the secret via ``waitbus install credentials``
-    (systemd-creds backend) or re-encrypt it with the configured age
-    recipient (age backend), and ensure the daemon can reach it.
+    Triggered by a corrupt/unreadable ``secrets.json`` or a file whose
+    mode is not 0600. A simply-absent file is NOT an error — it returns
+    ``None`` so the broadcast/wait path runs with no secrets at all.
+
+    Operator fix: stage the secret via
+    ``waitbus install-credentials <name>``, which writes the file
+    atomically with the correct 0600 mode.
     """
 
 
-def _get_secret_systemd_creds(name: str) -> str | None:
-    creds_dir = os.environ.get("CREDENTIALS_DIRECTORY") or os.environ.get("WAITBUS_CREDS_DIR")
-    if not creds_dir:
-        return None
-    path = Path(creds_dir) / name
-    if not path.is_file():
-        return None
+def secrets_path() -> str:
+    """Return the absolute path to the JSON secrets file."""
+    return str(_paths.state_dir() / "secrets.json")
+
+
+@lru_cache(maxsize=1)
+def _load_secrets(path: str) -> dict[str, Any]:
+    """Read and parse the secrets file once per path, then cache it.
+
+    Returns an empty dict when the file is absent (secrets are optional).
+    Raises ``SecretNotConfigured`` when the file exists but cannot be
+    read, is not mode 0600, or does not parse to a JSON object.
+
+    The cache means an operator rotating a secret must restart the daemon
+    to pick up the new value — fail-loud, no silent stale auth — matching
+    the prior backends' construction-time read semantics.
+    """
     try:
-        return path.read_text(encoding="utf-8").rstrip("\r\n")
+        st = os.stat(path)
+    except FileNotFoundError:
+        return {}
     except OSError as exc:
+        raise SecretNotConfigured(f"secrets file unreadable: {path} ({exc})") from exc
+    mode = stat.S_IMODE(st.st_mode)
+    if mode != 0o600:
         raise SecretNotConfigured(
-            f"credential file unreadable: {path} ({exc})",
-        ) from exc
-
-
-def _get_secret_age(name: str) -> str | None:
-    creds_dir = os.environ.get("WAITBUS_AGE_CREDS_DIR")
-    identity = os.environ.get("WAITBUS_AGE_IDENTITY")
-    if not creds_dir or not identity:
-        return None
-    path = Path(creds_dir) / f"{name}.age"
-    if not path.is_file():
-        return None
-    age_bin = shutil.which("age")
-    if age_bin is None:
-        raise SecretNotConfigured(
-            "WAITBUS_SECRETS_BACKEND=age but the age binary is not on "
-            "PATH. Install age (https://github.com/FiloSottile/age) or "
-            "switch WAITBUS_SECRETS_BACKEND back to systemd-creds."
+            f"secrets file {path} has mode {mode:#o}, expected 0600; re-stage via `waitbus install-credentials <name>`."
         )
     try:
-        proc = subprocess.run(
-            [age_bin, "--decrypt", "--identity", identity, str(path)],
-            capture_output=True,
-            timeout=_AGE_DECRYPT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SecretNotConfigured(
-            f"age decrypt failed for {path}: {exc}",
-        ) from exc
-    if proc.returncode != 0:
-        stderr = proc.stderr.decode("utf-8", "replace").strip()
-        raise SecretNotConfigured(
-            f"age decrypt exited {proc.returncode} for {path}: {stderr}",
-        )
-    return proc.stdout.decode("utf-8").rstrip("\r\n")
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except OSError as exc:
+        raise SecretNotConfigured(f"secrets file unreadable: {path} ({exc})") from exc
+    except json.JSONDecodeError as exc:
+        raise SecretNotConfigured(f"secrets file {path} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SecretNotConfigured(f"secrets file {path} must contain a JSON object, got {type(data).__name__}")
+    return data
 
 
 def get_secret(name: str) -> str | None:
-    """Read a credential via the configured secret backend.
+    """Read a credential from the JSON secrets file.
 
-    Returns the credential value (UTF-8-decoded, trailing newline
-    stripped) or ``None`` when the credential is not configured on this
-    host.
-
-    Backend selection: ``WAITBUS_SECRETS_BACKEND`` is ``systemd-creds``
-    (default) or ``age``. An unknown value raises ``SecretNotConfigured``
-    rather than silently falling back, so a misconfigured deployment
-    fails loud instead of running without an expected credential.
+    Returns the credential value as a string, or ``None`` when the
+    secrets file is absent or has no entry for ``name``. A simply-absent
+    file is not an error — the broadcast/wait path runs with no secrets.
 
     Raises:
-        SecretNotConfigured: the credential exists but cannot be read or
-            decrypted (binary blob, permission denial, missing age
-            binary, wrong age identity), or the backend name is unknown.
+        SecretNotConfigured: the secrets file exists but cannot be read,
+            is not mode 0600, or does not parse to a JSON object.
     """
-    backend = os.environ.get("WAITBUS_SECRETS_BACKEND", "systemd-creds")
-    if backend == "systemd-creds":
-        return _get_secret_systemd_creds(name)
-    if backend == "age":
-        return _get_secret_age(name)
-    raise SecretNotConfigured(f"unknown WAITBUS_SECRETS_BACKEND={backend!r}; expected 'systemd-creds' or 'age'")
+    data = _load_secrets(secrets_path())
+    value = data.get(name)
+    if value is None:
+        return None
+    return str(value)
+
+
+def _reset_cache_for_test() -> None:
+    """Clear the secrets cache so a test can re-stage and re-read.
+
+    Production code never calls this — a daemon restart is the rotation
+    boundary. Tests that write a fresh ``secrets.json`` between reads use
+    it to invalidate the per-path cache.
+    """
+    _load_secrets.cache_clear()

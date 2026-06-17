@@ -46,7 +46,7 @@ for the other.
 
 | Correctness / Consistency issue | Fixed | Fix commit | Last reproduction commit | Reproduction script |
 | --- | --- | --- | --- | --- |
-| Subscribe-rejected exception class drift: all non-`version` reject reasons surfaced as `TokenRequiredError` on the client side, including lag drops | May 2026 | `bd78daf` | `bd78daf` from May 2026 | `uv run pytest tests/test_broadcast_exception_mapping.py -v` |
+| Subscribe-rejected exception class drift: a non-`version` reject reason defaulted to a wrong auth-specific client exception instead of the base `BroadcastConnectionError`, mislabeling lag drops (that auth exception was later removed with the broadcast token) | May 2026 | `bd78daf` | `bd78daf` from May 2026 | `uv run pytest tests/test_broadcast_exception_mapping.py -v` |
 | Replay wrong-key-pop subscriber leak and `SUBSCRIBER_COUNT` double-decrement: lag eviction popped fd `-1` after socket close, leaking the real map entry; a subsequent `_fan_out` close double-decremented the gauge | May 2026 | `f148f29` | `f148f29` from May 2026 | `uv run pytest tests/test_broadcast.py::test_replay_lag_eviction_closes_subscriber_with_real_fd tests/test_broadcast_robustness.py -v` |
 | Replay `sqlite3.Error` task crash and subscriber leak: a DB fault during `_replay` crashed the `_read_subscribe` task silently and left the subscriber registered with no wire close | May 2026 | `f148f29` | `f148f29` from May 2026 | `uv run pytest tests/test_broadcast.py -k test_close_subscriber tests/test_broadcast_robustness.py -v` |
 
@@ -130,14 +130,13 @@ mapping is `_REJECT_REASON_EXCEPTIONS`:
 
 | Wire `reason` | Client exception |
 |---|---|
-| `token` | `TokenRequiredError` |
 | `version` | `ProtocolVersionError` |
 | `lag_limit_exceeded` | `SubscriberLaggedError` |
 
-All three are subclasses of `BroadcastConnectionError`. An unknown
-future reason falls to the base class rather than defaulting to
-`TokenRequiredError`, which would mislabel a lag drop as an
-authentication failure -- the first defect in the track record.
+Both are subclasses of `BroadcastConnectionError`. An unknown future
+reason falls to the base class rather than defaulting to either specific
+exception, which would mislabel (for example) a lag drop as a version
+failure -- the first defect in the track record.
 
 ### `_TERMINAL_REJECT_FRAMES` and the wire-close contract
 

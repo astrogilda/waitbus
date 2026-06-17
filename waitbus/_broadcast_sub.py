@@ -1,13 +1,10 @@
 """Shared subscriber-open helper for broadcast tap and replay commands.
 
-Opens an authenticated AF_UNIX SOCK_STREAM connection to the broadcast
-daemon and sends the subscribe frame. The returned socket is blocking
-and ready for ``_frame.sync_read_frame`` calls.
-
-Token lookup order:
-1. ``token`` kwarg (explicit override, for tests).
-2. ``WAITBUS_BROADCAST_TOKEN`` environment variable.
-3. ``$CREDENTIALS_DIRECTORY/broadcast-token`` (systemd-creds, runtime).
+Opens an AF_UNIX SOCK_STREAM connection to the broadcast daemon and
+sends the subscribe frame. The returned socket is blocking and ready
+for ``_frame.sync_read_frame`` calls. Ingress identity is enforced by
+the kernel's same-UID peer-credential check on the AF_UNIX socket; there
+is no application-level subscribe token.
 
 Bookmark mechanism:
 Named bookmarks persist the last-consumed event ID so a subscriber can
@@ -34,7 +31,6 @@ from typing import Any, Final, NamedTuple, NoReturn
 
 import msgspec
 
-from . import _secrets
 from ._frame import (
     DRAINABLE_CONTROL_KINDS,
     FRAME_PROTO_VERSION,
@@ -60,7 +56,7 @@ class SubscriberHandle(msgspec.Struct, frozen=True):
             closes it.
 
     Under wire protocol v1 the daemon's terminal handshake frame is
-    either ``subscribe_rejected`` (token/version failure -> the read
+    either ``subscribe_rejected`` (version/lag-limit failure -> the read
     engine raises) or ``subscribe_ack`` (registration confirmed, carrying
     the replay/live ``caught_up_at`` watermark). Both are handled by the
     shared read engine, so :func:`open_subscriber` performs no client-side
@@ -175,17 +171,6 @@ class BroadcastConnectionError(OSError):
         self.remediation = remediation
 
 
-class TokenRequiredError(BroadcastConnectionError):
-    """Raised when the daemon rejects the subscribe with ``reason="token"``.
-
-    A subclass of :class:`BroadcastConnectionError`: a token rejection is a
-    connection-level auth failure surfaced by the daemon's ``subscribe_rejected``
-    frame, not a programmer error. Callers that catch ``BroadcastConnectionError``
-    catch this transparently; callers wanting token-specific remediation may
-    catch it by name.
-    """
-
-
 class ProtocolVersionError(BroadcastConnectionError):
     """Raised when the daemon rejects the subscribe with ``reason="version"``.
 
@@ -207,13 +192,12 @@ class SubscriberLaggedError(BroadcastConnectionError):
 
 # Maps each ``subscribe_rejected`` wire reason to its typed exception. The
 # keys are exactly the consumer-facing reasons in CONSUMER_API.md §3
-# (enforced by tests/test_broadcast_exception_mapping.py). An unknown future
-# reason falls to the base ``BroadcastConnectionError`` — NOT ``TokenRequiredError``;
-# defaulting to token mislabels lag/version drops as auth failures. Internal
-# faults (e.g. the daemon's ``replay_db_error``) close the socket silently and
+# (enforced by tests/test_broadcast_exception_mapping.py). An unknown or
+# absent reason falls to the base ``BroadcastConnectionError`` so a future
+# reason is never mislabelled as a specific failure class. Internal faults
+# (e.g. the daemon's ``replay_db_error``) close the socket silently and
 # never reach this map.
 _REJECT_REASON_EXCEPTIONS: Final[dict[str, type[BroadcastConnectionError]]] = {
-    "token": TokenRequiredError,
     "version": ProtocolVersionError,
     "lag_limit_exceeded": SubscriberLaggedError,
 }
@@ -226,49 +210,20 @@ def _raise_for_reject(frame: dict[str, Any]) -> NoReturn:
     documented wire reason to its typed exception so a consumer gets
     reason-appropriate remediation. Every type subclasses
     :class:`BroadcastConnectionError`, so a caller catching the base catches
-    all of them. An unknown future reason falls to the base (NOT token) --
-    defaulting to token mislabels lag/version drops as auth failures. The
-    single shared mapping keeps the handshake reader and the streaming
-    engine from drifting apart.
+    all of them. An unknown or absent reason falls to the base so a future
+    reason is never mislabelled. The single shared mapping keeps the
+    handshake reader and the streaming engine from drifting apart.
     """
-    reason = frame.get("reason", "token")
+    reason = frame.get("reason")
     if not isinstance(reason, str):
         # A malformed frame can carry an unhashable reason (list/dict);
         # coerce any non-string to a printable placeholder so the dict
         # lookup below cannot raise a raw TypeError and the frame still
         # maps to the unknown-reason base exception.
         reason = f"<non-string:{type(reason).__name__}>"
-    remediation = str(
-        frame.get("remediation") or "Verify the broadcast token and wire protocol version match the daemon."
-    )
+    remediation = str(frame.get("remediation") or "Verify the wire protocol version matches the daemon.")
     exc_cls = _REJECT_REASON_EXCEPTIONS.get(reason, BroadcastConnectionError)
     raise exc_cls(f"broadcast subscribe rejected (reason={reason!r})", remediation=remediation)
-
-
-def _resolve_token(explicit: str | None) -> str | None:
-    """Return the broadcast token from the first available source.
-
-    Lookup order:
-    1. ``explicit`` kwarg (test override / caller-supplied value).
-    2. ``WAITBUS_BROADCAST_TOKEN`` environment variable.
-    3. ``_secrets.get_secret(\"broadcast-token\")`` — the canonical
-       credential reader; honours
-       ``WAITBUS_SECRETS_BACKEND={systemd-creds|age}`` so the
-       subscriber side picks up the age backend automatically when an
-       operator has configured one (parity with the daemon side).
-
-    Returns ``None`` when no source produces a token. A misconfigured
-    backend (age binary missing, age identity unset, etc.) raises
-    ``SecretNotConfigured`` from ``_secrets.get_secret`` — the
-    subscriber side fails loud rather than silently degrading to
-    no-auth.
-    """
-    if explicit is not None:
-        return explicit
-    env_token = os.environ.get("WAITBUS_BROADCAST_TOKEN")
-    if env_token:
-        return env_token
-    return _secrets.get_secret("broadcast-token")
 
 
 def open_subscriber(
@@ -276,11 +231,10 @@ def open_subscriber(
     filters: list[str] | None = None,
     event_types: list[str] | None = None,
     since: str | None = None,
-    token: str | None = None,
     socket_path: str | None = None,
     bookmark_id: str | None = None,
 ) -> SubscriberHandle:
-    """Open and authenticate a broadcast subscriber socket.
+    """Open a broadcast subscriber socket.
 
     Connects to the broadcast daemon, sends the subscribe frame with
     the supplied parameters, and returns a :class:`SubscriberHandle`
@@ -288,6 +242,9 @@ def open_subscriber(
     for closing ``handle.sock``. Frames are read via
     :func:`_frame.sync_read_frame` or through :func:`await_predicate`
     (which skips the daemon's control frames and raises on a reject).
+
+    Ingress identity is the kernel's same-UID peer-credential check on
+    the AF_UNIX socket; there is no application-level subscribe token.
 
     When ``bookmark_id`` is given the function loads the saved cursor
     from ``cursors_dir() / "bookmark-{bookmark_id}.txt"`` and injects it
@@ -303,7 +260,6 @@ def open_subscriber(
             Defaults to all supported types when ``None``.
         since: ULID cursor for replay. ``None`` means subscribe from now
             unless ``bookmark_id`` supplies a stored cursor.
-        token: Explicit bearer token. Overrides env / creds-dir lookup.
         socket_path: Override the default broadcast socket path (tests).
         bookmark_id: Persistent bookmark name. Must match
             ``^[A-Za-z0-9_.-]+$``. When set and no ``since`` is given,
@@ -323,11 +279,12 @@ def open_subscriber(
         BroadcastConnectionError: The daemon socket is absent, refuses
             the connection, or the subscribe-frame send fails.
 
-    Note: a token or wire-version rejection is NOT raised here. The daemon
-    answers a bad token / unsupported ``proto`` with a ``subscribe_rejected``
-    control frame; :func:`await_predicate` (the read engine) raises the typed
-    ``TokenRequiredError`` / ``BroadcastConnectionError`` when the caller
-    reads — there is no synchronous open-time probe.
+    Note: a wire-version or lag-limit rejection is NOT raised here. The
+    daemon answers an unsupported ``proto`` (or a lag-limit drop) with a
+    ``subscribe_rejected`` control frame; :func:`await_predicate` (the read
+    engine) raises the typed ``ProtocolVersionError`` /
+    ``BroadcastConnectionError`` when the caller reads — there is no
+    synchronous open-time probe.
     """
     # Resolve the effective ``since`` cursor before opening the socket so
     # a ValueError from bookmark validation surfaces before any I/O.
@@ -353,10 +310,6 @@ def open_subscriber(
     if effective_since is not None:
         subscribe["since"] = effective_since
 
-    resolved_token = _resolve_token(token)
-    if resolved_token is not None:
-        subscribe["token"] = resolved_token
-
     try:
         sock.sendall(encode_frame(json.dumps(subscribe).encode("utf-8")))
     except OSError as exc:
@@ -367,13 +320,13 @@ def open_subscriber(
         ) from exc
 
     # No client-side probe. Under wire protocol v1 the daemon's terminal
-    # handshake frame is deterministic: ``subscribe_rejected`` (token,
-    # version, or lag-limit failure, then FIN) or ``subscribe_ack``
-    # (registration confirmed, structurally the first frame on the wire).
-    # The shared read engine (``await_predicate``) recognises both — raising
-    # a typed ``TokenRequiredError`` / ``BroadcastConnectionError`` on a
-    # reject and skipping the ack as a control frame — so there is no
-    # timing window to probe and no first-frame to stash.
+    # handshake frame is deterministic: ``subscribe_rejected`` (version or
+    # lag-limit failure, then FIN) or ``subscribe_ack`` (registration
+    # confirmed, structurally the first frame on the wire). The shared read
+    # engine (``await_predicate``) recognises both — raising a typed
+    # ``ProtocolVersionError`` / ``BroadcastConnectionError`` on a reject and
+    # skipping the ack as a control frame — so there is no timing window to
+    # probe and no first-frame to stash.
     return SubscriberHandle(sock=sock)
 
 

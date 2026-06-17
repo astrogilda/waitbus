@@ -38,7 +38,6 @@ from ._broadcast_sub import (
 )
 from ._cloudevents import rfc3339_from_epoch_ns
 from ._paths import db_path, ensure_state_dirs
-from ._secrets import SecretNotConfigured
 
 _GIT_REMOTE_TIMEOUT_SEC: Final[int] = 5
 """Timeout in seconds for the ``git remote get-url origin`` subprocess call.
@@ -309,15 +308,11 @@ def watch(
       ``SIGINT``, so a monitoring consumer can rearm without
       a non-zero exit signalling failure.
     * ``1`` -- the daemon violated the wire framing mid-stream.
-    * ``2`` -- the broadcast socket is absent / refused, or a token is
-      required but not configured.
+    * ``2`` -- the broadcast socket is absent / refused.
 
-    Two documented behaviour deltas vs the deleted hand-rolled loop:
-
-    * ``--watch`` now flows the standard ``open_subscriber`` token path
-      (a configured broadcast token is sent on the subscribe frame).
-    * Resume is the unified ``BookmarkCursor``; the bespoke
-      ``(owner, repo)``-keyed cursor-file model is deleted.
+    Behaviour delta vs the deleted hand-rolled loop: resume is the unified
+    ``BookmarkCursor``; the bespoke ``(owner, repo)``-keyed cursor-file
+    model is deleted.
     """
     try:
         sub = open_subscriber(
@@ -328,9 +323,6 @@ def watch(
         )
     except BroadcastConnectionError as exc:
         sys.stderr.write(f"waitbus --watch: {exc}. {exc.remediation}\n")
-        return 2
-    except SecretNotConfigured as exc:
-        sys.stderr.write(f"waitbus --watch: {exc}\n")
         return 2
 
     def _emit_summary(frame: dict[str, Any]) -> None:

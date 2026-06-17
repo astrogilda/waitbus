@@ -1,16 +1,15 @@
 """Unit tests for the waitbus CLI surface (`waitbus.cli`).
 
 Uses typer's CliRunner. Each test isolates HOME to a tmp_path so the
-operator's real state directories, config files, and credential store
-are never touched. ``install-credentials`` is tested by mocking
-``shutil.which`` and ``subprocess.run`` so no actual systemd-creds
-invocation occurs.
+operator's real state directories, config files, and secrets file are
+never touched. ``install-credentials`` writes a real 0600 ``secrets.json``
+under the isolated state dir; the listener-enable side effect is tested by
+mocking ``subprocess.run`` so no actual ``systemctl`` invocation occurs.
 """
 
 from __future__ import annotations
 
 import importlib
-import os
 import shutil
 import sys
 from collections.abc import Generator
@@ -101,83 +100,130 @@ def test_init_dry_run_does_not_mutate_filesystem(isolated_home: Path) -> None:
 # --- install-credentials ---------------------------------------------------
 
 
-def test_install_credentials_dry_run_prints_command_and_skips_invocation(
-    isolated_home: Path,
-) -> None:
-    with (
-        patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemd-creds"),
-        patch("waitbus.cli.subprocess.run") as run_mock,
-    ):
-        result = runner.invoke(
-            cli.app,
-            ["install-credentials", "github-webhook-secret", "--value", "abc123", "--dry-run"],
-        )
-    assert result.exit_code == 0, result.stdout
-    assert "systemd-creds encrypt" in result.stdout
-    assert "LoadCredentialEncrypted=github-webhook-secret:" in result.stdout
-    assert run_mock.call_count == 0
+import json
+import stat
 
 
-def test_install_credentials_invokes_systemd_creds_encrypt(
+def _secrets_json_path(isolated_home: Path) -> Path:
+    return isolated_home / ".local" / "state" / "waitbus" / "secrets.json"
+
+
+def test_install_credentials_writes_secret_from_file(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
-    import subprocess as _subprocess
+    """A non-listener secret is read from --file and merged into secrets.json (0600)."""
+    src = tmp_path / "secret.txt"
+    src.write_text("am-secret-value\n")
+    result = runner.invoke(
+        cli.app,
+        ["install-credentials", "alertmanager-hmac", "--file", str(src)],
+    )
+    assert result.exit_code == 0, result.stdout
+    path = _secrets_json_path(isolated_home)
+    assert path.exists()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    data = json.loads(path.read_text())
+    # Trailing newline is stripped.
+    assert data == {"alertmanager-hmac": "am-secret-value"}
 
-    credstore = tmp_path / "credstore.encrypted"
-    credstore.mkdir()
+
+def test_install_credentials_reads_value_from_stdin(isolated_home: Path) -> None:
+    """When --file is omitted the value is read from stdin (no shell-history leak)."""
+    result = runner.invoke(
+        cli.app,
+        ["install-credentials", "alertmanager-hmac"],
+        input="from-stdin",
+    )
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(_secrets_json_path(isolated_home).read_text())
+    assert data == {"alertmanager-hmac": "from-stdin"}
+
+
+def test_install_credentials_merges_without_clobbering(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """Staging a second secret keeps the first key intact."""
+    path = _secrets_json_path(isolated_home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"github-webhook-secret": "gh-existing"}))
+    path.chmod(0o600)
+    src = tmp_path / "am.txt"
+    src.write_text("am-new")
+    result = runner.invoke(
+        cli.app,
+        ["install-credentials", "alertmanager-hmac", "--file", str(src)],
+    )
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(path.read_text())
+    assert data == {"github-webhook-secret": "gh-existing", "alertmanager-hmac": "am-new"}
+
+
+def test_install_credentials_no_value_flag(isolated_home: Path) -> None:
+    """The shell-history-leaking --value flag is gone (unknown option)."""
+    result = runner.invoke(
+        cli.app,
+        ["install-credentials", "alertmanager-hmac", "--value", "v"],
+    )
+    assert result.exit_code != 0
+    assert "No such option" in result.output or "no such option" in result.output.lower()
+
+
+def test_install_credentials_rejects_empty_value(isolated_home: Path, tmp_path: Path) -> None:
+    src = tmp_path / "empty.txt"
+    src.write_text("")
+    result = runner.invoke(
+        cli.app,
+        ["install-credentials", "alertmanager-hmac", "--file", str(src)],
+    )
+    assert result.exit_code != 0
+    assert "empty" in result.output
+
+
+def test_install_credentials_listener_secret_enables_listener(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """Staging github-webhook-secret enables the opt-in listener (Linux: systemctl)."""
+    src = tmp_path / "gh.txt"
+    src.write_text("gh-hmac")
     with (
-        patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemd-creds"),
-        patch("waitbus.cli.subprocess.run") as run_mock,
+        patch.object(sys, "platform", "linux"),
+        patch("waitbus.cli.install.credentials.subprocess.run") as run_mock,
     ):
-        run_mock.return_value = _subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout="",
-            stderr="",
-        )
+        import subprocess as _subprocess
+
+        run_mock.return_value = _subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         result = runner.invoke(
             cli.app,
-            ["install-credentials", "broadcast-token", "--value", "tok-xyz", "--credstore-dir", str(credstore)],
+            ["install-credentials", "github-webhook-secret", "--file", str(src)],
         )
     assert result.exit_code == 0, result.stdout
     assert run_mock.call_count == 1
     args = run_mock.call_args.args[0]
-    assert args[0] == "systemd-creds"
-    assert args[1] == "encrypt"
-    assert args[2] == "--name=broadcast-token"
-    assert args[-1].endswith("waitbus.broadcast-token.cred")
-    assert run_mock.call_args.kwargs["input"] == "tok-xyz"
+    assert args == ["systemctl", "--user", "enable", "--now", "waitbus-listener.service"]
+    data = json.loads(_secrets_json_path(isolated_home).read_text())
+    assert data["github-webhook-secret"] == "gh-hmac"
 
 
-def test_install_credentials_rejects_value_and_file_together(isolated_home: Path) -> None:
-    with patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemd-creds"):
+def test_install_credentials_no_enable_listener_flag_skips_enable(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """--no-enable-listener stages the secret without enabling the unit."""
+    src = tmp_path / "gh.txt"
+    src.write_text("gh-hmac")
+    with (
+        patch.object(sys, "platform", "linux"),
+        patch("waitbus.cli.install.credentials.subprocess.run") as run_mock,
+    ):
         result = runner.invoke(
             cli.app,
-            ["install-credentials", "x", "--value", "v", "--file", "/dev/null"],
+            ["install-credentials", "github-webhook-secret", "--file", str(src), "--no-enable-listener"],
         )
-    assert result.exit_code != 0
-    assert "mutually exclusive" in result.output
-
-
-def test_install_credentials_requires_systemd_creds_on_path(isolated_home: Path) -> None:
-    with patch("waitbus.cli.shutil.which", return_value=None):
-        result = runner.invoke(
-            cli.app,
-            ["install-credentials", "x", "--value", "v", "--dry-run"],
-        )
-    assert result.exit_code != 0
-    assert "systemd-creds is not on PATH" in result.output
-
-
-def test_install_credentials_rejects_empty_value(isolated_home: Path) -> None:
-    with patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemd-creds"):
-        result = runner.invoke(
-            cli.app,
-            ["install-credentials", "x", "--value", "", "--dry-run"],
-        )
-    assert result.exit_code != 0
-    assert "empty" in result.output
+    assert result.exit_code == 0, result.stdout
+    assert run_mock.call_count == 0
 
 
 # --- install-systemd -------------------------------------------------------
@@ -331,35 +377,31 @@ def test_doctor_exits_1_when_state_missing(isolated_home: Path, monkeypatch: pyt
 
 
 @_DOCTOR_LINUX_ONLY
-@pytest.mark.skipif(
-    os.geteuid() == 0,
-    reason="root bypasses directory permissions; cannot simulate an unreadable credstore",
-)
-def test_doctor_handles_unreadable_credstore(
-    isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_doctor_reports_unusable_secrets_file_without_crashing(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """doctor must not crash when the credstore dir is not operator-readable.
+    """doctor must not crash when secrets.json exists but is wrong-mode.
 
-    The system credstore is root-0700 by design (systemd-creds), so the
-    operator account cannot stat its entries. Python 3.12+ raises
-    PermissionError from Path.is_file() there (3.11 returned False); doctor
-    must report the credentials as indeterminate and keep going, not crash
-    mid-run before the [systemd] section.
+    A wrong-mode (not 0600) secrets file raises SecretNotConfigured from the
+    read path; the [credentials] check must report it as unusable and keep
+    going, not crash mid-run before the [systemd] section.
     """
-    locked = tmp_path / "credstore.encrypted"
-    locked.mkdir()
-    os.chmod(locked, 0o000)  # no search permission: is_file() on a child raises PermissionError
-    monkeypatch.setattr("waitbus.cli._shared.CREDSTORE_DIR", locked)
+    from waitbus import _secrets
+
+    state = isolated_home / ".local" / "state" / "waitbus"
+    state.mkdir(parents=True, exist_ok=True)
+    secrets_file = state / "secrets.json"
+    secrets_file.write_text('{"github-webhook-secret": "x"}')
+    secrets_file.chmod(0o644)  # wrong mode -> SecretNotConfigured
+    _secrets._reset_cache_for_test()
     monkeypatch.setattr("waitbus.cli._shared._share_systemd_user_dir", lambda: isolated_home / "no-share")
     monkeypatch.setattr("waitbus.cli._shared._systemd_user_target_dir", lambda: isolated_home / "no-target")
-    try:
-        with patch("waitbus.cli.shutil.which", return_value=None):
-            result = runner.invoke(cli.app, ["doctor"])
-    finally:
-        os.chmod(locked, 0o755)  # restore so pytest's tmp cleanup can remove it
-    assert not isinstance(result.exception, PermissionError), result.exception
+    with patch("waitbus.cli.shutil.which", return_value=None):
+        result = runner.invoke(cli.app, ["doctor"])
+    _secrets._reset_cache_for_test()
+    assert not isinstance(result.exception, Exception) or isinstance(result.exception, SystemExit), result.exception
     assert "[credentials]" in result.stdout
-    assert "indeterminate" in result.stdout
+    assert "unusable" in result.stdout
     assert "[systemd]" in result.stdout  # reached past credentials without crashing
 
 
@@ -377,7 +419,7 @@ def test_doctor_exits_0_when_everything_ok(isolated_home: Path, monkeypatch: pyt
     monkeypatch.setattr("waitbus.cli._shared._share_systemd_user_dir", lambda: share)
     monkeypatch.setattr("waitbus.cli._shared._systemd_user_target_dir", lambda: target)
     with (
-        patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemd-creds"),
+        patch("waitbus.cli.shutil.which", return_value="/usr/bin/systemctl"),
         patch("waitbus.cli.doctor._check_credentials", return_value=[]),
         patch("waitbus.cli.doctor._check_metrics_endpoint", return_value=[]),
         patch("waitbus.cli.doctor._check_config_validation", return_value=[]),

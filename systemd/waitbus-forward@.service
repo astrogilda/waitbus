@@ -15,10 +15,15 @@ Type=simple
 # literal slug `org_dev/my_repo`. The earlier ${1/_//} convention only
 # replaced the first underscore, which mangled any owner or repo name
 # that itself contained an underscore.
-ExecStart=/bin/bash -c 'secret="$$(cat "$$CREDENTIALS_DIRECTORY"/github-webhook-secret)"; \
-    if [ -z "$$secret" ]; then echo "missing github-webhook-secret credential" >&2; exit 1; fi; \
+# The webhook secret is read from the 0600 secrets.json under the state
+# dir (%S/waitbus/secrets.json) via a stdlib python3 one-liner, matching
+# the daemons' _secrets.get_secret read path. No systemd credential
+# plumbing. Stage the secret via `waitbus install-credentials github-webhook-secret`.
+ExecStart=/bin/bash -c 'secret="$$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get(\"github-webhook-secret\",\"\"))" "$$STATE_DIRECTORY"/secrets.json)"; \
+    if [ -z "$$secret" ]; then echo "missing github-webhook-secret in secrets.json" >&2; exit 1; fi; \
     exec gh webhook forward --repo="$$1" --events=workflow_run,workflow_job --url=http://127.0.0.1:9000/webhook --secret="$$secret"' _ %I
-LoadCredentialEncrypted=github-webhook-secret:/etc/credstore.encrypted/waitbus.github-webhook-secret.cred
+StateDirectory=waitbus
+StateDirectoryMode=0700
 Restart=on-failure
 RestartSec=10s
 StandardOutput=journal

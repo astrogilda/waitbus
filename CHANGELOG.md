@@ -10,6 +10,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.3]
+
+### Changed
+
+- Secrets are stored in a single `0600`-mode `secrets.json` under the user
+  state directory and read with a stdlib JSON parse, replacing the
+  `systemd-creds` encrypted-credential backend. At-rest protection of the file
+  is delegated to host full-disk encryption (FileVault / LUKS); local access is
+  bounded by the file's owner-only permissions and, for the broadcast socket,
+  the kernel's same-UID peer-credential check. `install-credentials` reads the
+  value from `--file` or stdin and merges it with an atomic replace; the
+  `--value` flag is gone because it leaked secrets into shell history.
+- The webhook listener is now opt-in. A default install ships secret-free; the
+  broadcast and wait paths need no secret. Staging the GitHub webhook secret
+  (`install-credentials github-webhook-secret`) is what enables the listener.
+
+### Removed
+
+- The broadcast subscribe protocol no longer carries a bearer token. The
+  `AF_UNIX` broadcast socket is already restricted to the connecting user by the
+  kernel's peer-credential check, so the token guarded nothing a same-UID peer
+  could not already reach. The subscribe frame's `token` field and the
+  `subscribe_rejected` `reason="token"` reject are removed. This is a breaking
+  wire-protocol change (acceptable pre-1.0).
+
 ## [0.1.2]
 
 ### Fixed

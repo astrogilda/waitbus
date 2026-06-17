@@ -11,8 +11,8 @@ Assertions:
 3. Every entry in ``ALL_FRAME_KINDS`` has a corresponding ``###``
    heading in §2a.
 
-4. The three reject-frame constants in broadcast.py
-   (``_SUBSCRIBE_REJECT_TOKEN_FRAME``, ``_SUBSCRIBE_REJECT_VERSION_FRAME``,
+4. The two reject-frame constants in broadcast.py
+   (``_SUBSCRIBE_REJECT_VERSION_FRAME``,
    ``_SUBSCRIBE_REJECT_LAG_LIMIT_FRAME``) decode via msgspec to
    ``SubscribeRejectedFrame`` instances whose ``reason`` values match
    what §3 of CONSUMER_API.md documents.
@@ -50,16 +50,15 @@ _CATALOGUE_STRUCTS: tuple[type[msgspec.Struct], ...] = (
     SubscribeRejectedFrame,
 )
 
-# The three reject-frame constants live in broadcast.py and are imported
+# The reject-frame constants live in broadcast.py and are imported
 # lazily here to avoid a costly full-module import in fast tests.
 _BROADCAST_REJECT_NAMES = (
-    "_SUBSCRIBE_REJECT_TOKEN_FRAME",
     "_SUBSCRIBE_REJECT_VERSION_FRAME",
     "_SUBSCRIBE_REJECT_LAG_LIMIT_FRAME",
 )
 
 # §3 documents exactly these reason values for the framed rejects.
-_DOCUMENTED_REASONS = {"token", "version", "lag_limit_exceeded"}
+_DOCUMENTED_REASONS = {"version", "lag_limit_exceeded"}
 
 
 # ---------------------------------------------------------------------------

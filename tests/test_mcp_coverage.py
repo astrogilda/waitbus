@@ -9,8 +9,7 @@ Covers branches and paths not reached by the existing test_mcp*.py suite:
   matching workflow_job direct (not via parent run); parent-run-matched job.
 - _tail_events_read: repo-scoped SQL branch; next_cursor update when rows found.
 - _tail_events_blocking: BroadcastConnectionError degrades gracefully;
-  SecretNotConfigured degrades gracefully; open_subscriber + await_predicate
-  happy path (mocked).
+  open_subscriber + await_predicate happy path (mocked).
 - _summarise_runs: >5-run truncation suffix.
 - WaitbusServer.get_capabilities: caps.resources is None branch.
 - _subscribe_handler: request_ctx present (session added to registry).
@@ -46,7 +45,6 @@ from waitbus._mcp_constants import (
     TOOL_LIST_FAILED_JOBS,
     TOOL_TAIL_EVENTS,
 )
-from waitbus._secrets import SecretNotConfigured
 
 # ---------------------------------------------------------------------------
 # Shared DB fixture
@@ -289,7 +287,7 @@ def test_tail_events_read_missing_db(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 # ---------------------------------------------------------------------------
-# _tail_events_blocking: BroadcastConnectionError / SecretNotConfigured degrades
+# _tail_events_blocking: BroadcastConnectionError degrades
 # ---------------------------------------------------------------------------
 
 
@@ -305,20 +303,6 @@ def test_tail_events_blocking_degrades_on_broadcast_connection_error(
     monkeypatch.setattr(mcp_mod, "open_subscriber", _raise)
     # No events so the long-poll path is entered (max_wait_seconds > 0,
     # no events from the initial read).
-    result = mcp_mod._tail_events_blocking(repo=None, since_cursor=None, limit=10, max_wait_seconds=1)
-    assert "events" in result
-
-
-def test_tail_events_blocking_degrades_on_secret_not_configured(
-    events_db: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """SecretNotConfigured causes graceful degrade to DB-read result."""
-
-    def _raise(**_kw: Any) -> Any:
-        raise SecretNotConfigured("no token")
-
-    monkeypatch.setattr(mcp_mod, "open_subscriber", _raise)
     result = mcp_mod._tail_events_blocking(repo=None, since_cursor=None, limit=10, max_wait_seconds=1)
     assert "events" in result
 

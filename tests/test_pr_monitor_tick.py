@@ -23,9 +23,9 @@ import pytest
 from waitbus import pr_monitor
 from waitbus._broadcast_sub import (
     BroadcastConnectionError,
+    ProtocolVersionError,
     SubscriberHandle,
     SubscriberLaggedError,
-    TokenRequiredError,
     WaitOutcome,
 )
 
@@ -109,7 +109,7 @@ def test_tick_deadline_then_terminal_returns_0(
     assert "MONITOR_DONE" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("reject_exc", [TokenRequiredError, SubscriberLaggedError])
+@pytest.mark.parametrize("reject_exc", [ProtocolVersionError, SubscriberLaggedError])
 def test_main_subscribe_reject_mid_loop_returns_2(
     monkeypatch: pytest.MonkeyPatch,
     tmp_db_path: Path,

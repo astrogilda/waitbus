@@ -307,18 +307,6 @@ def test_run_returns_framing_error(monkeypatch: pytest.MonkeyPatch) -> None:
         server.close()
 
 
-def test_top_exits_2_when_credentials_misconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A SecretNotConfigured from open_subscriber is a startup error (exit 2)."""
-    from waitbus._secrets import SecretNotConfigured
-
-    def _raise(**_k: object) -> None:
-        raise SecretNotConfigured("token backend not configured")
-
-    monkeypatch.setattr(top_mod, "open_subscriber", _raise)
-    result = runner.invoke(app, ["top", "--max-frames", "1"])
-    assert result.exit_code == 2
-
-
 def test_top_exits_2_when_ack_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     """A subscribe rejection at the ack barrier surfaces as a startup error (exit 2)."""
     import socket

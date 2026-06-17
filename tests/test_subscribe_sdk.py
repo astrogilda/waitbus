@@ -204,24 +204,24 @@ def _fake_sub(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def _reject(*_a: Any, **_k: Any) -> Any:
-    from waitbus._broadcast_sub import TokenRequiredError
+    from waitbus._broadcast_sub import ProtocolVersionError
 
-    raise TokenRequiredError("subscribe rejected: reason='token'", "configure a broadcast token")
+    raise ProtocolVersionError("subscribe rejected: reason='version'", "send proto: 1")
 
 
 def test_wait_for_propagates_typed_reject(_fake_sub: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from waitbus._broadcast_sub import TokenRequiredError
+    from waitbus._broadcast_sub import ProtocolVersionError
 
     monkeypatch.setattr(sdk, "_drain_one", _reject)
-    with pytest.raises(TokenRequiredError):
+    with pytest.raises(ProtocolVersionError):
         sdk.wait_for(source="docker", socket_path="x")
 
 
 def test_subscribe_propagates_typed_reject(_fake_sub: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from waitbus._broadcast_sub import TokenRequiredError
+    from waitbus._broadcast_sub import ProtocolVersionError
 
     monkeypatch.setattr(sdk, "_drain_one", _reject)
-    with pytest.raises(TokenRequiredError):
+    with pytest.raises(ProtocolVersionError):
         for _ in sdk.subscribe(source="docker", socket_path="x"):
             pass
 
@@ -299,7 +299,7 @@ async def test_asubscribe_propagates_typed_reject_not_silent_eof(
 ) -> None:
     # Regression guard: the async path MUST re-raise the typed reject the engine
     # raises, not swallow it into a clean EOF (the sync paths above propagate it).
-    from waitbus._broadcast_sub import TokenRequiredError
+    from waitbus._broadcast_sub import ProtocolVersionError
 
     monkeypatch.setattr(sdk, "_drain_one", _reject)
 
@@ -307,7 +307,7 @@ async def test_asubscribe_propagates_typed_reject_not_silent_eof(
         async for _ in sdk.asubscribe(source="docker", socket_path="x"):
             pass
 
-    with pytest.raises(TokenRequiredError):
+    with pytest.raises(ProtocolVersionError):
         await asyncio.wait_for(consume(), timeout=4.0)
 
 

@@ -152,21 +152,31 @@ def test_format_status_listener_skip_line_is_exact() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_start_listener_skips_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.delenv("WAITBUS_CREDS_DIR", raising=False)
+def test_start_listener_skips_without_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from waitbus import _secrets
+
+    # A fresh state dir has no secrets.json, so the listener is skipped.
+    monkeypatch.setenv("WAITBUS_STATE_DIR", str(tmp_path / "state"))
+    _secrets._reset_cache_for_test()
     statuses: list[serve.ComponentStatus] = []
     assert serve._start_listener(statuses) is None
     assert statuses == [serve.ComponentStatus("listener", False, "no github-webhook-secret")]
+    _secrets._reset_cache_for_test()
 
 
 def test_start_listener_serves_healthz_with_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """With a staged credential the listener thread starts and answers /healthz."""
-    creds = tmp_path / "creds"
-    creds.mkdir()
-    (creds / "github-webhook-secret").write_text("test-secret")
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.setenv("WAITBUS_CREDS_DIR", str(creds))
+    """With a staged secret the listener thread starts and answers /healthz."""
+    import json
+
+    from waitbus import _secrets
+
+    state = tmp_path / "state"
+    state.mkdir()
+    secrets_file = state / "secrets.json"
+    secrets_file.write_text(json.dumps({"github-webhook-secret": "test-secret"}))
+    secrets_file.chmod(0o600)
+    monkeypatch.setenv("WAITBUS_STATE_DIR", str(state))
+    _secrets._reset_cache_for_test()
     monkeypatch.setattr(listener, "LISTEN_PORT", 0)  # ephemeral port, no 9000 collision
     monkeypatch.setattr(listener.WebhookHandler, "secret", b"")
     monkeypatch.setattr(listener.WebhookHandler, "am_secret", None)
@@ -183,6 +193,7 @@ def test_start_listener_serves_healthz_with_secret(tmp_path: Path, monkeypatch: 
         server.shutdown()
         server.server_close()
         thread.join(timeout=5.0)
+        _secrets._reset_cache_for_test()
     assert not thread.is_alive()
 
 

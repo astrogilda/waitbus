@@ -76,9 +76,13 @@ def serve_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     monkeypatch.setenv("WAITBUS_STATE_DIR", str(dirs["state"]))
     monkeypatch.setenv("WAITBUS_RUNTIME_DIR", str(dirs["runtime"]))
     monkeypatch.setenv("WAITBUS_CONFIG_DIR", str(dirs["config"]))
-    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
-    monkeypatch.delenv("WAITBUS_CREDS_DIR", raising=False)
     monkeypatch.delenv("WAITBUS_FS_WATCH_PATH", raising=False)
+    # Per-test state dir has no secrets.json, so the default is secret-free
+    # (the broadcast/wait path needs no secrets). Clear the secret read cache
+    # so a prior test's secrets.json under a different state dir is not seen.
+    from waitbus import _secrets
+
+    _secrets._reset_cache_for_test()
     return dirs
 
 

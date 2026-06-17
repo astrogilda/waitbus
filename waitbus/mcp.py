@@ -36,8 +36,7 @@ under the ``[mcp]`` section:
 
 Defaults (no operator config required): ``filter: ["*"]``,
 ``event_types`` omitted (daemon falls back to its full supported set),
-``since: null``. The broadcast-subscribe token (when configured) lives in
-systemd-creds, not the TOML.
+``since: null``.
 
 The separate ``filters.json`` config surface was retired; config now
 uses two surfaces (env + TOML).
@@ -112,7 +111,6 @@ from ._mcp_subscriptions import (
     parse_repo_uri,
 )
 from ._sdnotify import sd_notify
-from ._secrets import SecretNotConfigured
 from ._version import PACKAGE_VERSION
 
 _BACKOFF_INITIAL_S = 1.0
@@ -165,11 +163,6 @@ def _load_filters() -> dict[str, Any]:
     ``get_config()`` invocation (loud-fail config semantics); this
     function does not catch — the daemon refuses to start on a bad config
     rather than silently widening the filter.
-
-    The optional broadcast-subscribe ``token`` field is intentionally
-    absent: tokens live in systemd-creds (LoadCredentialEncrypted=
-    broadcast-token) and are read by ``broadcast._lookup_token()``, not
-    the operator-edited TOML.
 
     Replaces the legacy ``filters.json`` file (retired).
     """
@@ -650,12 +643,11 @@ def _tail_events_blocking(
     filters = [f"{split[0]}/{split[1]}"] if split is not None else None
     try:
         sub = open_subscriber(filters=filters, since=since_cursor)
-    except (BroadcastConnectionError, SecretNotConfigured):
-        # Daemon unreachable, token/version/lag-rejected, or the secrets
-        # backend is misconfigured: either way the MCP tool degrades
-        # gracefully to the durable one-shot DB read already done above.
-        # TokenRequiredError / ProtocolVersionError / SubscriberLaggedError
-        # are BroadcastConnectionError subclasses, so the base catches them.
+    except BroadcastConnectionError:
+        # Daemon unreachable or version/lag-rejected: either way the MCP
+        # tool degrades gracefully to the durable one-shot DB read already
+        # done above. ProtocolVersionError / SubscriberLaggedError are
+        # BroadcastConnectionError subclasses, so the base catches them.
         return result
 
     def _decide(_frame: dict[str, Any]) -> FrameDecision:

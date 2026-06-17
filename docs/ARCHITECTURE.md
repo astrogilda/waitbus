@@ -46,7 +46,7 @@ And the operator-facing umbrella CLI:
                               init             bootstrap state dirs + schema
                               install-systemd  copy + enable units
                               install-launchd  copy launchd plists (macOS)
-                              install-credentials  encrypt+stage a credential (systemd-creds)
+                              install-credentials  stage a secret into the 0600 secrets.json
                               doctor           validate the live install end-to-end
                               status           operational dashboard
                               verify-plugin    validate .claude-plugin/plugin.json
@@ -59,9 +59,9 @@ standard library `ThreadingHTTPServer` for concurrent webhook
 deliveries; one thread per request, no thread pool. Routes:
 
 - `POST /webhook` — GitHub workflow events. HMAC-SHA256 over the
-  raw body using the `github-webhook-secret` credential (decrypted by
-  systemd into `$CREDENTIALS_DIRECTORY/github-webhook-secret`), lifted
-  via `X-Hub-Signature-256`. Workflow_run and workflow_job event
+  raw body using the `github-webhook-secret` secret (read from the 0600
+  `secrets.json` via `_secrets.get_secret`), lifted via
+  `X-Hub-Signature-256`. Workflow_run and workflow_job event
   types are stored; everything else returns 200 ignored.
 - `POST /alertmanager` — Prometheus alerts. HMAC over the body
   using the `alertmanager-hmac` credential, same delivery mechanism.
@@ -304,13 +304,14 @@ subcommands:
   orphans for the downgrade case; `--dry-run` previews actions
   without modifying anything and exits 0.
 - `install-launchd` — macOS equivalent of `install-systemd`.
-- `install-credentials` — operator command that encrypts a credential
-  via `systemd-creds encrypt --name=<name>` and stages it as
-  `/etc/credstore.encrypted/waitbus.<name>.cred` for each unit's
-  `LoadCredentialEncrypted=` directive to pick up. The encryption key
-  is host-bound (TPM2 or `/var/lib/systemd/credential.secret`); the
-  daemon never sees it.
-- `doctor` — health check (config, paths, binaries, credential store,
+- `install-credentials` — operator command that reads a secret from
+  `--file` or stdin and merges it (key = credential name) into the 0600
+  `secrets.json` under the state dir, writing atomically
+  (`secrets.json.tmp` chmod-0600-then-`os.replace`). Staging
+  `github-webhook-secret` also enables the opt-in webhook listener. At-rest
+  protection is delegated to host full-disk encryption + UNIX DAC; the
+  daemon reads the value via `_secrets.get_secret`.
+- `doctor` — health check (config, paths, binaries, secrets file,
   systemd/launchd-unit presence, metrics endpoint). Exits 0 when every
   section reports clean; exits 1 on any issue so the command is usable
   in pre-commit hooks, shell-prompt indicators, and post-restart
@@ -472,8 +473,7 @@ v0.1.0, the first public release.
   "filters": ["owner/repo", "owner/*", "*"],
   "event_types": ["workflow_run", "workflow_job",
                   "prometheus_alert", "prometheus_watchdog"],
-  "since": "01HZ...26chars",
-  "token": "..."
+  "since": "01HZ...26chars"
 }
 ```
 
@@ -487,10 +487,9 @@ v0.1.0, the first public release.
 - `since` is optional; when present the daemon replays up to
   `REPLAY_LIMIT` matching rows above that ULID before joining the live
   stream, then sends the `subscribe_ack`.
-- `token` is optional unless the operator has staged the
-  `broadcast-token` credential; when staged, the token is mandatory
-  and constant-time compared (mismatch →
-  `subscribe_rejected{reason:"token"}`).
+
+There is no subscribe token: the AF_UNIX socket's same-UID peer-credential
+check (`SO_PEERCRED` / `getpeereid`) is the entire ingress boundary.
 
 ### Daemon → subscriber frames
 
@@ -506,7 +505,7 @@ whose `kind` they do not recognise rather than break.
 | `truncated` | data | yes | Stub for a row exceeding `MAX_FRAME_BYTES`; consumer re-fetches via `read-events --json`. |
 | `daemon_heartbeat` | control | no | Liveness ping every `heartbeat_sec`; reaches every subscriber regardless of filters. |
 | `subscribe_ack` | control | no | Positive registration signal, emitted exactly once after registration + replay; carries `proto`, `caught_up_at` (replay/live dedup cursor, `null` when no `since`), and `heartbeat_sec`. |
-| `subscribe_rejected` | control (terminal) | no | Subscribe refused (`reason` ∈ `token` / `version` / `lag_limit_exceeded`); the connection then closes. |
+| `subscribe_rejected` | control (terminal) | no | Subscribe refused (`reason` ∈ `version` / `lag_limit_exceeded`); the connection then closes. |
 
 An `event` frame's `summary` is the human-friendly one-line rendering
 from `read_events.format_text`; consumers wanting a different layout
@@ -557,61 +556,55 @@ Notes:
 
 ## Authentication model
 
-Three independently-keyed mechanisms, each with its own scope and
-each loaded once at daemon startup (rotation requires a daemon
-restart).
+Two independently-scoped mechanisms, each loaded once at daemon startup
+(rotation requires a daemon restart).
 
 ### Per-route HMAC for webhook ingress
 
 - `/webhook`: HMAC-SHA256 keyed on the `github-webhook-secret`
-  credential. Required. Listener exits 2 at startup if the credential
-  file is missing from `$CREDENTIALS_DIRECTORY`.
+  secret. Required. The listener is opt-in (enabled only when this
+  secret is staged) and exits 2 at startup if it is missing.
 - `/alertmanager` and `/watchdog`: HMAC-SHA256 keyed on the
-  `alertmanager-hmac` credential. Optional. When absent, both routes
+  `alertmanager-hmac` secret. Optional. When absent, both routes
   return 503; the GitHub path is unaffected so a single missing
-  credential never disables the whole listener.
+  secret never disables the whole listener.
 
-### Peer-credential UID + optional broadcast token for daemon subscribers
+### Peer-credential UID gate for daemon subscribers
 
 - Every accepted connection to the broadcast socket reads the peer
   UID and rejects peers whose UID differs from `os.getuid()`. Linux
   uses `SO_PEERCRED`; macOS uses `getpeereid()` via ctypes (see
   `waitbus/_peercred.py`). `LOCAL_PEERPID` is deliberately not
   used — see SECURITY.md for the CVE rationale.
-- Optionally, a `broadcast-token` credential can be staged. When
-  present, subscribers must include a matching `token` field in their
-  subscribe envelope; constant-time compare; mismatch closes the
-  connection without a reply.
-- The two mechanisms compose: the UID check rules out cross-UID
-  attackers, the token rules out same-UID processes the operator
-  has not authorised. The token is optional because the typical
-  single-user workstation does not need it.
+- This kernel-attested same-UID check is the entire broadcast ingress
+  boundary. There is no application-level subscribe token: any process
+  that can reach the socket is already proven same-UID, so a bearer
+  token would re-check an identity the kernel has already attested.
 
-### Credential staging conventions
+### Secret staging conventions
 
-Three credential names the daemon stack reads:
+Two secret names the listener reads:
 
 ```
 github-webhook-secret   listener  load-bearing
 alertmanager-hmac       listener  optional
-broadcast-token         broadcast optional
 ```
 
-Staging via `waitbus install-credentials <name>` (reads the
-plaintext from `--value`, `--file`, or stdin; shells out to
-`systemd-creds encrypt --name=<name>` and writes the ciphertext to
-`/etc/credstore.encrypted/waitbus.<name>.cred`). Each unit
-declares `LoadCredentialEncrypted=<name>:/etc/credstore.encrypted/...`;
-at unit-start systemd decrypts the credential into a per-unit tmpfs
-file under `$CREDENTIALS_DIRECTORY/<name>` (mode 0400, owned by the
-service UID). `waitbus doctor` reports the presence of each
-encrypted credential without decrypting it.
+Staging via `waitbus install-credentials <name>` (reads the plaintext
+from `--file` or stdin — never `--value`, which would leak to shell
+history) merges it (key = `<name>`) into the 0600 `secrets.json` under
+the state dir, written atomically (`secrets.json.tmp` chmod-0600 then
+`os.replace`). Staging `github-webhook-secret` also enables the opt-in
+listener unit. The daemon reads the value via `_secrets.get_secret`
+(stdlib `json.loads`, no external tool); `waitbus doctor` reports
+per-key presence. At-rest protection is delegated to host full-disk
+encryption (FileVault / LUKS) + UNIX DAC (0600); see SECURITY.md.
 
-The credential file is opened once at daemon startup; the daemon holds
-the key material in process memory for its lifetime. There is no
-runtime refresh path, so a compromised disk write cannot
-quietly rotate the listener's HMAC key under a running daemon.
-Rotation is `install-credentials <name>` followed by a unit restart.
+The secrets file is read once and cached at daemon startup; the daemon
+holds the key material in process memory for its lifetime. There is no
+runtime refresh path, so a compromised disk write cannot quietly rotate
+the listener's HMAC key under a running daemon. Rotation is
+`install-credentials <name>` followed by a unit restart.
 
 ---
 

@@ -42,13 +42,14 @@ from ._types import EventInsert
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 9000
 GITHUB_WEBHOOK_CRED = "github-webhook-secret"
-"""systemd-creds credential name for the GitHub webhook HMAC secret.
-Load-bearing: the listener exits 2 at startup if the credential is
-missing. Stage via ``waitbus install-credentials github-webhook-secret``."""
+"""Secrets-file key for the GitHub webhook HMAC secret. Load-bearing for
+the (opt-in) listener: the listener exits 2 at startup if the secret is
+missing. Stage via ``waitbus install-credentials github-webhook-secret``
+(which also enables the listener unit)."""
 ALERTMANAGER_HMAC_CRED = "alertmanager-hmac"
-"""systemd-creds credential name for the Alertmanager / watchdog HMAC
-secret. Optional: when absent, /alertmanager and /watchdog respond 503
-but /webhook stays up. Stage via ``waitbus install-credentials
+"""Secrets-file key for the Alertmanager / watchdog HMAC secret.
+Optional: when absent, /alertmanager and /watchdog respond 503 but
+/webhook stays up. Stage via ``waitbus install-credentials
 alertmanager-hmac``."""
 MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB
 REQUEST_READ_TIMEOUT_SEC: float = 30
@@ -63,12 +64,13 @@ logger = logging.getLogger("waitbus.listener")
 
 
 def _lookup_secret(name: str) -> bytes | None:
-    """Return the credential value as bytes, or None on any failure.
+    """Return the secret value as bytes, or None on any failure.
 
-    Wraps `_secrets.get_secret` to absorb credential-infrastructure
-    failures (unreadable file) as "secret unavailable" — load_secret
-    fails fast on None for load-bearing secrets, load_secret_optional
-    keeps the daemon running on None for the optional paths.
+    Wraps `_secrets.get_secret` to absorb secrets-file failures
+    (unreadable / wrong-mode / corrupt file) as "secret unavailable" —
+    load_secret fails fast on None for load-bearing secrets,
+    load_secret_optional keeps the daemon running on None for the
+    optional paths.
     """
     try:
         value = _secrets.get_secret(name)
@@ -80,19 +82,22 @@ def _lookup_secret(name: str) -> bytes | None:
 
 
 def load_secret(name: str) -> bytes:
-    """Fetch a credential from systemd-creds. Exit 2 if missing or unavailable.
+    """Fetch a secret from the 0600 secrets.json. Exit 2 if missing or unavailable.
 
     Args:
-        name: credential name exposed by ``LoadCredentialEncrypted=<name>:...``
-            in the listener unit. Read from ``$CREDENTIALS_DIRECTORY/<name>``.
+        name: secrets-file key read via ``_secrets.get_secret(name)``.
+
+    The listener is opt-in: it is enabled only when an operator stages a
+    ``github-webhook-secret``, so a missing load-bearing secret here means
+    the unit was started without its prerequisite. Exit 2 with a clean
+    operator message rather than serving an unauthenticated webhook.
     """
     secret = _lookup_secret(name)
     if secret is None:
         sys.stderr.write(
-            f"waitbus listener: credential {name!r} not found in "
-            "$CREDENTIALS_DIRECTORY. Stage it via "
-            f"`waitbus install-credentials {name}` and ensure the unit "
-            f"declares `LoadCredentialEncrypted={name}:...`.\n"
+            f"waitbus listener: secret {name!r} not configured. Stage it via "
+            f"`waitbus install-credentials {name}` (this writes the 0600 "
+            "secrets.json and enables the listener), then restart the unit.\n"
         )
         sys.exit(2)
     return secret

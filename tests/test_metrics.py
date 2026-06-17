@@ -116,11 +116,9 @@ def test_render_escapes_label_value_special_chars() -> None:
 
 def test_subscriber_rejected_counter_records_reason_label() -> None:
     """``waitbus_subscriber_rejected_total`` is labelled by the consumer-facing wire reason."""
-    _metrics.incr("waitbus_subscriber_rejected_total", reason="token")
     _metrics.incr("waitbus_subscriber_rejected_total", reason="version")
     _metrics.incr("waitbus_subscriber_rejected_total", reason="lag_limit_exceeded")
     _metrics.incr("waitbus_subscriber_rejected_total", reason="lag_limit_exceeded")
-    assert _metrics.get("waitbus_subscriber_rejected_total", reason="token") == 1
     assert _metrics.get("waitbus_subscriber_rejected_total", reason="version") == 1
     assert _metrics.get("waitbus_subscriber_rejected_total", reason="lag_limit_exceeded") == 2
 

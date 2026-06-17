@@ -639,7 +639,7 @@ def test_event_from_webhook_payload_canonical_key_set_invariant(event_type: str,
 
 
 # ---------------------------------------------------------------------------
-# systemd-creds-backed secret loading
+# secrets.json-backed secret loading
 # ---------------------------------------------------------------------------
 
 
