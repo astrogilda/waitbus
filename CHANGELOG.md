@@ -10,6 +10,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.2]
+
+### Fixed
+
+- The systemd daemons failed to start under an interpreter with an executable
+  stack. uv and pyenv standalone Python builds ship the interpreter without a
+  non-executable `GNU_STACK` header, so the kernel assumes an executable stack
+  and glibc allocates writable-and-executable thread stacks; the units'
+  `MemoryDenyWriteExecute` setting blocks that, so thread creation failed with
+  "can't start new thread". `install-systemd` now detects an executable-stack
+  interpreter and writes a drop-in that disables only that protection for the
+  affected units, with a notice on how to restore it. Interpreters with a
+  non-executable stack are unaffected and keep the protection.
+
 ## [0.1.1]
 
 ### Added
