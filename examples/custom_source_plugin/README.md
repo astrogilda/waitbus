@@ -1,7 +1,7 @@
 # waitbus-circleci — reference plugin for `waitbus.sources.v1`
 
 This directory contains a complete, buildable Python package that demonstrates
-how to register a custom event source with [waitbus](https://github.com/sgilda/waitbus)
+how to register a custom event source with [waitbus](https://github.com/astrogilda/waitbus)
 via the `waitbus.sources.v1` entry-point group.
 
 The plugin registers the source name `circleci` and declares support for the
