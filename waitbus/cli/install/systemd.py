@@ -10,6 +10,8 @@ import typer
 from .._shared import (
     _apply_unit_change,
     _enable_units,
+    _install_executable_stack_overrides,
+    _interpreter_has_executable_stack,
     _read_manifest,
     _share_systemd_user_dir,
     _sync_orphans,
@@ -101,6 +103,25 @@ def install_systemd(
             typer.secho(f"  ERROR: declared unit missing in source: {src}", fg=typer.colors.RED, err=True)
             continue
         _apply_unit_change("copy", src, dst, dry_run)
+
+    # An interpreter with an executable stack (uv / pyenv standalone Python
+    # builds ship without a non-executable GNU_STACK header) makes glibc
+    # allocate writable-and-executable thread stacks, which the units'
+    # MemoryDenyWriteExecute= setting blocks -- the daemons would fail to
+    # create threads. Detect that and drop in an override so they run; keep
+    # the protection for interpreters whose stack is non-executable.
+    if _interpreter_has_executable_stack():
+        overridden = _install_executable_stack_overrides(units, target_dir, dry_run=dry_run)
+        if overridden:
+            typer.secho(
+                "  Note: this interpreter marks its stack executable, which is "
+                "typical of uv and pyenv standalone Python builds. "
+                "MemoryDenyWriteExecute has been disabled for the waitbus daemon "
+                "units so they can create threads; run waitbus under a system "
+                "Python with a non-executable stack to keep that protection.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
 
     # daemon-reload is cheap and always safe
     if dry_run:

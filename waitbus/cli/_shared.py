@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import sysconfig
@@ -150,6 +151,102 @@ def _read_manifest(share_dir: Path) -> list[str]:
             continue
         units.append(stripped)
     return units
+
+
+# ---------------------------------------------------------------------------
+# executable-stack interpreter handling
+# ---------------------------------------------------------------------------
+
+_PT_GNU_STACK = 0x6474E551
+_PF_X = 0x1
+
+#: Drop-in that disables MemoryDenyWriteExecute= for one service unit. The
+#: numeric prefix orders it after the shipped unit so it wins.
+_EXEC_STACK_DROPIN_NAME = "20-executable-stack.conf"
+_EXEC_STACK_DROPIN_BODY = (
+    "# The interpreter running waitbus marks its stack executable: it ships\n"
+    "# without a non-executable GNU_STACK ELF header, which is typical of uv\n"
+    "# and pyenv standalone Python builds. Under such an interpreter glibc\n"
+    "# allocates every thread stack writable-and-executable, and\n"
+    "# MemoryDenyWriteExecute= blocks that, so the daemon cannot create\n"
+    "# threads. This override disables that one protection for this install.\n"
+    "# Restore it by running waitbus under an interpreter whose stack is\n"
+    "# non-executable (most system Python packages), then delete this file.\n"
+    "[Service]\n"
+    "MemoryDenyWriteExecute=false\n"
+)
+
+
+def _interpreter_has_executable_stack(interpreter: Path | None = None) -> bool | None:
+    """Report whether the interpreter binary requests an executable stack.
+
+    A binary with no ``PT_GNU_STACK`` program header makes the kernel fall
+    back to an executable stack (the historical default); a ``PT_GNU_STACK``
+    that carries the executable flag requests one explicitly. Either case
+    makes glibc allocate every thread stack writable-and-executable, which
+    ``MemoryDenyWriteExecute=`` blocks -- so a daemon under such an
+    interpreter cannot create threads.
+
+    Returns ``True`` for an executable stack, ``False`` for a
+    non-executable one, and ``None`` when the file cannot be parsed as an
+    ELF (the caller should not assume either way).
+    """
+    path = Path(interpreter) if interpreter is not None else Path(sys.executable)
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(64)
+            if len(head) < 52 or head[:4] != b"\x7fELF":
+                return None
+            is_64 = head[4] == 2
+            endian = "<" if head[5] == 1 else ">"
+            if is_64:
+                e_phoff = struct.unpack_from(endian + "Q", head, 0x20)[0]
+                e_phentsize = struct.unpack_from(endian + "H", head, 0x36)[0]
+                e_phnum = struct.unpack_from(endian + "H", head, 0x38)[0]
+                flags_off = 4  # p_flags follows p_type in Elf64_Phdr
+            else:
+                e_phoff = struct.unpack_from(endian + "I", head, 0x1C)[0]
+                e_phentsize = struct.unpack_from(endian + "H", head, 0x2A)[0]
+                e_phnum = struct.unpack_from(endian + "H", head, 0x2C)[0]
+                flags_off = 24  # p_flags is the last field of Elf32_Phdr
+            if e_phentsize < 8 or e_phnum == 0:
+                return None
+            fh.seek(e_phoff)
+            table = fh.read(e_phentsize * e_phnum)
+    except OSError:
+        return None
+    for i in range(e_phnum):
+        entry = table[i * e_phentsize : (i + 1) * e_phentsize]
+        if len(entry) < flags_off + 4:
+            break
+        if struct.unpack_from(endian + "I", entry, 0)[0] == _PT_GNU_STACK:
+            return bool(struct.unpack_from(endian + "I", entry, flags_off)[0] & _PF_X)
+    # No GNU_STACK header at all -> the kernel assumes an executable stack.
+    return True
+
+
+def _install_executable_stack_overrides(units: Sequence[str], target_dir: Path, *, dry_run: bool) -> list[str]:
+    """Write a MemoryDenyWriteExecute override drop-in for every installed
+    service unit that declares the protection. Returns the units overridden."""
+    overridden: list[str] = []
+    for unit in units:
+        if not unit.endswith(".service"):
+            continue
+        try:
+            text = (target_dir / unit).read_text()
+        except OSError:
+            continue
+        if "MemoryDenyWriteExecute=true" not in text:
+            continue
+        dropin = target_dir / f"{unit}.d" / _EXEC_STACK_DROPIN_NAME
+        if dry_run:
+            typer.echo(f"  Would write override: {dropin}")
+        else:
+            dropin.parent.mkdir(parents=True, exist_ok=True)
+            dropin.write_text(_EXEC_STACK_DROPIN_BODY)
+            typer.echo(f"  Wrote override: {dropin}")
+        overridden.append(unit)
+    return overridden
 
 
 def _share_launchd_dir() -> Path:

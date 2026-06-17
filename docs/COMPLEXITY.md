@@ -19,7 +19,8 @@ Methods at cyclomatic-complexity grade C (complexity 11 or higher) are acceptabl
 
 | Function | Grade | Exception class | Rationale (one line) |
 |---|---|---|---|
-| `cli/install/systemd.py::install_systemd` | C(11) | orchestration | 6 operator-visible steps × 3 flag matrix (`--dry-run` / `--sync` / `--force`); per-step methods would be single-use indirections. |
+| `cli/install/systemd.py::install_systemd` | C(13) | orchestration | 7 operator-visible steps × 3 flag matrix (`--dry-run` / `--sync` / `--force`), including the executable-stack interpreter detection that drops in a `MemoryDenyWriteExecute` override; per-step methods would be single-use indirections. |
+| `cli/_shared.py::_interpreter_has_executable_stack` | C(12) | algorithmic | ELF binary-format parse: 32- vs 64-bit class and endianness branches, then a program-header scan for `PT_GNU_STACK`. The branching mirrors the on-disk ELF layout; extracting the header decode would create a single-use helper over one linear read. |
 | `cli/install/launchd.py::install_launchd` | C(13) | orchestration | macOS counterpart to `install_systemd`; same matrix shape against launchd plist conventions. |
 | `cli/_shared.py::_sync_launchd_orphans` | C(11) | orchestration | macOS sibling of the systemd orphan-pruner; LaunchAgents list diffing + bootstrap dependency walks. |
 | `cli/status.py::_status_liveness` | C(11) | fault isolation + type dispatch | `match sys.platform` dispatch plus per-daemon loop with continue-past-failures; each daemon arm is independent and the platform branch is genuine type-dispatch that cannot be flattened without a single-use wrapper per platform. |
