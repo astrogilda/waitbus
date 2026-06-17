@@ -35,6 +35,18 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_MANIFEST = PROJECT_ROOT / "tests" / "data" / "expected-sdist-manifest.txt"
 
+# Every sdist member is rooted at `waitbus-<version>/`. Strip that prefix so the
+# snapshot is a version-agnostic file set. The contract this test guards is
+# *which files ship*, not *what version* (sync-versions owns the version), so a
+# pure version bump must not churn this snapshot line-for-line.
+_SDIST_ROOT_RE = re.compile(r"^waitbus-[^/]+/")
+
+
+def _strip_root(name: str) -> str:
+    """Drop the ``waitbus-<version>/`` sdist root prefix from a member path."""
+    return _SDIST_ROOT_RE.sub("", name, count=1)
+
+
 COPYLEFT_RE = re.compile(
     rb"SPDX-License-Identifier:\s*(GPL|LGPL|AGPL)",
     re.IGNORECASE,
@@ -95,7 +107,7 @@ def test_sdist_manifest_matches_snapshot(tmp_path: Path) -> None:
     """Shipped file list equals the committed snapshot, sorted line-for-line."""
     sdist_path = _build_sdist(tmp_path)
     with tarfile.open(sdist_path, "r:gz") as tar:
-        actual_members = sorted(m.name for m in tar.getmembers() if m.isfile())
+        actual_members = sorted(_strip_root(m.name) for m in tar.getmembers() if m.isfile())
 
     expected = EXPECTED_MANIFEST.read_text().splitlines()
     expected = [line for line in expected if line.strip()]
@@ -109,7 +121,8 @@ def test_sdist_manifest_matches_snapshot(tmp_path: Path) -> None:
             f"  added (in sdist, not snapshot): {added}\n"
             f"  removed (in snapshot, not sdist): {removed}\n"
             "Regenerate via the procedure in CONTRIBUTING.md "
-            "(`uv build --sdist && tar tzf dist/waitbus-*.tar.gz | sort > "
+            "(`uv build --sdist && tar tzf dist/waitbus-*.tar.gz | "
+            "sed -E 's|^waitbus-[^/]+/||' | grep -v '^$' | sort > "
             "tests/data/expected-sdist-manifest.txt`)."
         )
 
