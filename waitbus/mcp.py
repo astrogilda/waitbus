@@ -257,11 +257,54 @@ async def emit_resource_updated(session: ServerSession, uri: str) -> None:
     await session.send_resource_updated(AnyUrl(uri))
 
 
+def _client_negotiated_channel(session: ServerSession) -> bool:
+    """Return True iff the client advertised the ``claude/channel`` extension.
+
+    The negotiated client capabilities live on
+    ``session.client_params.capabilities.experimental`` (the
+    ``InitializeRequestParams`` captured by the SDK during the
+    initialize handshake). Per the MCP lifecycle MUST clause, a server
+    may only use a capability the peer negotiated, so the Anthropic-
+    private ``notifications/claude/channel`` extension is emitted only
+    when the client listed ``claude/channel`` in its experimental block.
+
+    ``client_params`` is ``None`` before the initialize request is
+    processed; callers must gate the emit on ``state.initialized`` so
+    this check runs only once the handshake has populated it.
+    """
+    params = session.client_params
+    if params is None:
+        return False
+    experimental = params.capabilities.experimental or {}
+    return "claude/channel" in experimental
+
+
 async def _emit_frame(session: ServerSession, frame: dict[str, Any]) -> None:
-    """Send both notification methods for one non-heartbeat frame."""
-    for content, meta, event_id in _build_frame_emissions(frame):
-        await emit_claude_channel(session, content, meta=meta)
-        await emit_resource_updated(session, f"waitbus://event/{event_id}")
+    """Emit the capability-gated claude/channel notification per frame.
+
+    The spec-standard ``notifications/resources/updated`` is NOT emitted
+    here: ``waitbus://event/{id}`` is not a subscribable URI, so firing
+    ``resources/updated`` for it unconditionally would violate the MCP
+    rule that a server MUST NOT send ``resources/updated`` for a resource
+    the client has not subscribed to. The subscription-checked fan-out
+    lives in ``_emit_to_subscribed_sessions``.
+
+    Pre-init the claude/channel notification is queued in the session's
+    bounded pending deque: the negotiated experimental capabilities are
+    unavailable until the initialize handshake populates
+    ``client_params``, so the capability check (and the send) is deferred
+    to ``_flush_pending``.
+    """
+    emissions = _build_frame_emissions(frame)
+    if not emissions:
+        return
+    state = _get_state(session)
+    for content, meta, _event_id in emissions:
+        if not state.initialized:
+            _queue_pending_channel(state, content, meta)
+            continue
+        if _client_negotiated_channel(session):
+            await emit_claude_channel(session, content, meta=meta)
 
 
 # =============================================================
@@ -330,38 +373,71 @@ async def _emit_to_subscribed_sessions(
                 logger.debug("resource_updated emit failed for %s: %s", uri, exc)
 
 
-def _queue_pending(state: _SessionState, uri: str, payload: dict[str, Any]) -> None:
-    """Enqueue a pre-init notification, marking overflow on saturation.
+def _mark_overflow_if_saturated(state: _SessionState) -> None:
+    """Flip ``pending_overflowed`` when the bounded deque is at capacity.
 
-    The deque is bounded; on overflow the oldest entry is dropped and
-    ``pending_overflowed`` flips True so the post-init flush can emit
-    a synthetic ``waitbus://truncated`` marker telling the client it has
+    The deque is bounded; on overflow the oldest entry is dropped (deque
+    semantics) and ``pending_overflowed`` flips True so the post-init
+    flush can emit a synthetic truncated marker telling the client it has
     a gap to recover.
     """
     maxlen = state.pending.maxlen
     if maxlen is not None and len(state.pending) >= maxlen:
         state.pending_overflowed = True
-    state.pending.append(_QueuedEmit(uri=uri, payload=payload))
+
+
+def _queue_pending(state: _SessionState, uri: str, payload: dict[str, Any]) -> None:
+    """Enqueue a pre-init ``resources/updated`` notification."""
+    _mark_overflow_if_saturated(state)
+    state.pending.append(_QueuedEmit(kind="resource_updated", uri=uri, payload=payload))
+
+
+def _queue_pending_channel(state: _SessionState, content: str, meta: dict[str, str]) -> None:
+    """Enqueue a pre-init ``claude/channel`` notification.
+
+    Queued in the SAME bounded deque as ``resources/updated`` so the
+    FIFO ordering across both notification methods matches the order the
+    broadcast stream produced the frames. The capability check that gates
+    this emit runs at flush time, by which point ``client_params`` is
+    populated.
+    """
+    _mark_overflow_if_saturated(state)
+    state.pending.append(_QueuedEmit(kind="claude_channel", content=content, meta=dict(meta)))
 
 
 async def _flush_pending(session: ServerSession, state: _SessionState) -> None:
     """Drain the pre-init queue into the live session, plus overflow marker.
 
     Called once per session immediately after the registry observes the
-    initialize handshake completion. Emits queued resource_updated
-    notifications in FIFO order, then a single truncated marker if any
-    entry was evicted by the bounded queue.
+    client's ``notifications/initialized``. Emits the queued
+    notifications in FIFO order across BOTH methods:
+
+    - ``resource_updated`` entries replay via the SDK typed helper.
+    - ``claude_channel`` entries replay only when the client negotiated
+      the ``claude/channel`` experimental capability. By flush time the
+      handshake has populated ``client_params``, so this capability check
+      is valid (unlike at queue time, when ``client_params`` is ``None``).
+
+    Then a single truncated marker is emitted if any entry was evicted by
+    the bounded queue.
     """
+    channel_negotiated = _client_negotiated_channel(session)
     while state.pending:
         emit = state.pending.popleft()
+        if emit.kind == "claude_channel":
+            if channel_negotiated:
+                with contextlib.suppress(Exception):
+                    await emit_claude_channel(session, emit.content, meta=emit.meta)
+            continue
         with contextlib.suppress(Exception):
             await session.send_resource_updated(AnyUrl(emit.uri))
-    if state.pending_overflowed:
+    if state.pending_overflowed and channel_negotiated:
         state.pending_overflowed = False
         # Emit the spec-defined overflow signal via the channel side
-        # (the spec has no resources/truncated method). Clients
-        # subscribed to waitbus://current will see the gap and can
-        # replay via tail_events.
+        # (the spec has no resources/truncated method). Gated on the
+        # client having negotiated claude/channel, same as every other
+        # channel emit. Clients subscribed to waitbus://current will see
+        # the gap and can replay via tail_events.
         marker = JSONRPCNotification(
             jsonrpc="2.0",
             method="notifications/claude/channel",
@@ -1070,6 +1146,9 @@ def _tool_definitions() -> list[types.Tool]:
             ),
             inputSchema=schema_input_get_ci_status(),
             outputSchema=schema_ci_status(),
+            # Pure read of the events DB with no side effects, and the same
+            # arguments always yield the same row set for a given DB state.
+            annotations=types.ToolAnnotations(readOnlyHint=True, idempotentHint=True),
         ),
         types.Tool(
             name=TOOL_LIST_FAILED_JOBS,
@@ -1077,6 +1156,8 @@ def _tool_definitions() -> list[types.Tool]:
             description=("Return recent failing workflow_job rows, capped at limit."),
             inputSchema=schema_input_list_failed_jobs(),
             outputSchema=schema_failed_jobs(),
+            # Pure read; idempotent for a fixed DB state.
+            annotations=types.ToolAnnotations(readOnlyHint=True, idempotentHint=True),
         ),
         types.Tool(
             name=TOOL_GET_PR_AGGREGATE,
@@ -1086,6 +1167,8 @@ def _tool_definitions() -> list[types.Tool]:
             ),
             inputSchema=schema_input_get_pr_aggregate(),
             outputSchema=schema_pr_aggregate(),
+            # Pure read; idempotent for a fixed DB state.
+            annotations=types.ToolAnnotations(readOnlyHint=True, idempotentHint=True),
         ),
         types.Tool(
             name=TOOL_TAIL_EVENTS,
@@ -1097,6 +1180,10 @@ def _tool_definitions() -> list[types.Tool]:
             ),
             inputSchema=schema_input_tail_events(),
             outputSchema=schema_tail_events(),
+            # Read-only, but a windowed cursor read can advance the window
+            # and the bounded long-poll makes repeat calls observe new rows,
+            # so idempotentHint is intentionally left unset.
+            annotations=types.ToolAnnotations(readOnlyHint=True),
         ),
     ]
 
@@ -1341,6 +1428,22 @@ def build_initialization_options(server: Server[Any, Any]) -> InitializationOpti
     )
 
 
+def _is_initialized_notification(message: Any) -> bool:
+    """Return True iff ``message`` is the client's notifications/initialized.
+
+    The SDK's receive loop validates each inbound notification into a
+    ``types.ClientNotification`` RootModel before handing it to
+    ``incoming_messages``; the initialized notification surfaces with
+    ``.root`` being an ``types.InitializedNotification``. A bare
+    ``JSONRPCNotification`` with the matching ``method`` is also accepted
+    defensively in case a future SDK delivers the unparsed form.
+    """
+    root = getattr(message, "root", None)
+    if isinstance(root, types.InitializedNotification):
+        return True
+    return getattr(message, "method", None) == "notifications/initialized"
+
+
 async def main_async() -> None:
     """Construct the SDK server and drive the stdio loop.
 
@@ -1366,19 +1469,14 @@ async def main_async() -> None:
         loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGTERM, stop_event.set)
 
-        # Fire READY=1 after the session context manager completes the
-        # initialize handshake. The mcp-python-sdk has no sd_notify
-        # integration of its own; waitbus owns this primitive.
+        # Fire READY=1 once stdio is open and the session task group is
+        # running. The mcp-python-sdk has no sd_notify integration of its
+        # own; waitbus owns this primitive. NOTE: this fires BEFORE the
+        # client's initialize handshake completes — ServerSession.__aenter__
+        # only starts the receive loop, it does not await the client's
+        # initialize. The session is not marked initialized until the
+        # client's notifications/initialized arrives below.
         sd_notify(b"READY=1\nSTATUS=serving MCP notifications\n")
-
-        # Mark this session initialized and flush any pre-init queue.
-        # The ServerSession context manager has handled the initialize
-        # handshake internally by the time control reaches here, so
-        # subsequent notifications can be sent without violating the
-        # MCP lifecycle MUST clause on pre-init traffic.
-        state = _get_state(session)
-        state.initialized = True
-        await _flush_pending(session, state)
 
         subscriber = asyncio.create_task(_stream_events(session))
         # Dispatch each incoming client request to the registered tool /
@@ -1391,11 +1489,21 @@ async def main_async() -> None:
         # no lifespan and no handler reads the request context. Each request runs
         # as its own task so a blocking tool (tail_events) cannot stall a
         # concurrent tools/list or an outbound push notification.
+        #
+        # The client's notifications/initialized is the real handshake-
+        # complete signal (NOT ServerSession.__aenter__). When it arrives we
+        # mark the session initialized and flush the pre-init queue BEFORE
+        # dispatching it onward, so by flush time client_params is populated
+        # and the claude/channel capability gate in _flush_pending is valid.
         handlers: set[asyncio.Task[None]] = set()
         try:
             async for message in session.incoming_messages:
                 if stop_event.is_set():
                     break
+                if _is_initialized_notification(message):
+                    state = _get_state(session)
+                    state.initialized = True
+                    await _flush_pending(session, state)
                 handler = asyncio.create_task(server._handle_message(message, session, None))
                 handlers.add(handler)
                 handler.add_done_callback(handlers.discard)

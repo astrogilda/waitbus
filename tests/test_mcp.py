@@ -184,14 +184,44 @@ async def test_emit_resource_updated_uses_sdk_typed_helper() -> None:
 # --- _emit_frame -----------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_emit_frame_sends_both_notifications() -> None:
-    """_emit_frame calls emit_claude_channel then emit_resource_updated."""
+def _channel_capable_session() -> AsyncMock:
+    """An AsyncMock session whose client negotiated claude/channel.
+
+    Stamps ``client_params.capabilities.experimental`` with the
+    ``claude/channel`` key so ``_client_negotiated_channel`` returns True;
+    a bare AsyncMock would expose an auto-mock there that the ``in`` check
+    cannot evaluate.
+    """
+    from mcp import types
+
     session = AsyncMock()
-    await mcp_mod._emit_frame(session, _fixture_frame())
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={"claude/channel": {}}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
+    return session
+
+
+@pytest.mark.asyncio
+async def test_emit_frame_sends_capability_gated_channel_once_initialized() -> None:
+    """Post-init, _emit_frame emits ONLY the claude/channel notification.
+
+    No resources/updated is sent for the non-subscribable event URI
+    (FIX-2): that would violate the MUST-NOT-emit-for-unsubscribed rule.
+    """
+    session = _channel_capable_session()
+    mcp_mod._sessions.clear()
+    state = mcp_mod._get_state(session)
+    state.initialized = True
+    try:
+        await mcp_mod._emit_frame(session, _fixture_frame())
+    finally:
+        mcp_mod._sessions.pop(session, None)
 
     assert session.send_message.await_count == 1
-    assert session.send_resource_updated.await_count == 1
+    # FIX-2: the event URI is not subscribable, so no resources/updated.
+    assert session.send_resource_updated.await_count == 0
 
     (sent_msg,) = session.send_message.await_args.args
     dumped = json.loads(sent_msg.message.model_dump_json(by_alias=True, exclude_none=True))
@@ -199,8 +229,44 @@ async def test_emit_frame_sends_both_notifications() -> None:
     assert dumped["params"]["content"] == ('<waitbus:untrusted label="event-summary">test run</waitbus:untrusted>')
     assert dumped["params"]["meta"]["repo"] == "test-org/test-repo"
 
-    (sent_uri,) = session.send_resource_updated.await_args.args
-    assert str(sent_uri) == "waitbus://event/01HXZZZZZZZZZZZZZZZZZZZZZZ"
+
+@pytest.mark.asyncio
+async def test_emit_frame_queues_channel_pre_init() -> None:
+    """Pre-init, _emit_frame queues the channel notification, sends nothing."""
+    session = _channel_capable_session()
+    mcp_mod._sessions.clear()
+    state = mcp_mod._get_state(session)
+    assert state.initialized is False  # pre-handshake
+    try:
+        await mcp_mod._emit_frame(session, _fixture_frame())
+        assert session.send_message.await_count == 0
+        assert session.send_resource_updated.await_count == 0
+        assert len(state.pending) == 1
+        assert state.pending[0].kind == "claude_channel"
+    finally:
+        mcp_mod._sessions.pop(session, None)
+
+
+@pytest.mark.asyncio
+async def test_emit_frame_skips_channel_when_capability_not_negotiated() -> None:
+    """Post-init, a client that did NOT advertise claude/channel gets nothing."""
+    session = AsyncMock()
+    from mcp import types
+
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
+    mcp_mod._sessions.clear()
+    state = mcp_mod._get_state(session)
+    state.initialized = True
+    try:
+        await mcp_mod._emit_frame(session, _fixture_frame())
+        assert session.send_message.await_count == 0
+        assert session.send_resource_updated.await_count == 0
+    finally:
+        mcp_mod._sessions.pop(session, None)
 
 
 @pytest.mark.asyncio
@@ -210,6 +276,64 @@ async def test_emit_frame_skips_heartbeat() -> None:
     await mcp_mod._emit_frame(session, {"kind": "daemon_heartbeat", "ts": 1.0})
     assert session.send_message.await_count == 0
     assert session.send_resource_updated.await_count == 0
+
+
+# --- capability gate + initialized-notification detection ------------------
+
+
+def test_client_negotiated_channel_true_when_advertised() -> None:
+    """_client_negotiated_channel reads the experimental capability block."""
+    from mcp import types
+
+    session = AsyncMock()
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={"claude/channel": {}}),
+        clientInfo=types.Implementation(name="t", version="0"),
+    )
+    assert mcp_mod._client_negotiated_channel(session) is True
+
+
+def test_client_negotiated_channel_false_when_absent() -> None:
+    from mcp import types
+
+    session = AsyncMock()
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={}),
+        clientInfo=types.Implementation(name="t", version="0"),
+    )
+    assert mcp_mod._client_negotiated_channel(session) is False
+
+
+def test_client_negotiated_channel_false_pre_init() -> None:
+    """Before initialize, client_params is None -> capability not negotiated."""
+    session = AsyncMock()
+    session.client_params = None
+    assert mcp_mod._client_negotiated_channel(session) is False
+
+
+def test_is_initialized_notification_matches_client_notification() -> None:
+    """The SDK-parsed ClientNotification(root=InitializedNotification) is detected."""
+    from mcp import types
+
+    msg = types.ClientNotification(root=types.InitializedNotification(method="notifications/initialized"))
+    assert mcp_mod._is_initialized_notification(msg) is True
+
+
+def test_is_initialized_notification_rejects_other_notifications() -> None:
+    from mcp import types
+
+    msg = types.ClientNotification(root=types.RootsListChangedNotification(method="notifications/roots/list_changed"))
+    assert mcp_mod._is_initialized_notification(msg) is False
+
+
+def test_is_initialized_notification_accepts_bare_jsonrpc_defensively() -> None:
+    """A bare JSONRPCNotification with the method is accepted defensively."""
+    from mcp.types import JSONRPCNotification
+
+    msg = JSONRPCNotification(jsonrpc="2.0", method="notifications/initialized")
+    assert mcp_mod._is_initialized_notification(msg) is True
 
 
 # --- _stream_events backoff progression ------------------------------------

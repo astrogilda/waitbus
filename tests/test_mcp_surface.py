@@ -397,9 +397,64 @@ async def test_flush_pending_emits_truncated_marker_on_overflow() -> None:
     state = _SessionState()
     state.pending_overflowed = True
     session = AsyncMock()
+    # The overflow marker is a claude/channel emit, gated on the client
+    # having negotiated the capability (FIX-4); advertise it so the marker
+    # is emitted.
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={"claude/channel": {}}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
     await mcp_mod._flush_pending(session, state)
     assert state.pending_overflowed is False
     assert session.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_skips_truncated_marker_without_capability() -> None:
+    """A client that did not negotiate claude/channel gets no overflow marker."""
+    state = _SessionState()
+    state.pending_overflowed = True
+    session = AsyncMock()
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
+    await mcp_mod._flush_pending(session, state)
+    assert session.send_message.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_replays_queued_channel_when_capable() -> None:
+    """A queued claude_channel entry replays only when the capability is set."""
+    state = _SessionState()
+    state.pending.append(_QueuedEmit(kind="claude_channel", content="hi", meta={"repo": "o/r"}))
+    session = AsyncMock()
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={"claude/channel": {}}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
+    await mcp_mod._flush_pending(session, state)
+    assert session.send_message.await_count == 1
+    assert not state.pending
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_drops_queued_channel_without_capability() -> None:
+    """A queued claude_channel entry is dropped when the capability is absent."""
+    state = _SessionState()
+    state.pending.append(_QueuedEmit(kind="claude_channel", content="hi", meta={"repo": "o/r"}))
+    session = AsyncMock()
+    session.client_params = types.InitializeRequestParams(
+        protocolVersion="2025-06-18",
+        capabilities=types.ClientCapabilities(experimental={}),
+        clientInfo=types.Implementation(name="test", version="0.0.1"),
+    )
+    await mcp_mod._flush_pending(session, state)
+    assert session.send_message.await_count == 0
+    assert not state.pending
 
 
 # --- Fan-out to subscribed sessions --------------------------------------

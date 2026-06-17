@@ -10,6 +10,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.4]
+
+### Fixed
+
+- MCP tool `outputSchema`s are now top-level object-type JSON Schemas instead of
+  bare `$ref` wrappers. The Python SDK resolved the `$ref` transparently, but the
+  official TypeScript SDK validates the schema strictly, so MCP clients built on it
+  (the MCP Inspector, and likely Claude Desktop) rejected `tools/list`. The schemas
+  now pass strict cross-implementation validation.
+- The MCP server no longer sends `notifications/resources/updated` for the
+  non-subscribable `waitbus://event/{id}` URI. That notification is reserved for
+  resources the client has explicitly subscribed to; the unsolicited push could
+  trip a strict client's protocol checks.
+- Server-to-client notifications are held until the client completes the initialize
+  handshake (`notifications/initialized`) rather than being flushed when the session
+  opens.
+- The `notifications/claude/channel` extension is sent only to clients that
+  negotiated the `claude/channel` experimental capability, so a non-Claude client is
+  never sent the vendor notification.
+
+### Added
+
+- The four read tools carry `readOnlyHint` annotations (the three point reads also
+  carry `idempotentHint`), so MCP clients can recognize them as safe, side-effect-free
+  calls.
+
 ## [0.1.3]
 
 ### Changed
