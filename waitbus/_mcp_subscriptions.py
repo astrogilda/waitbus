@@ -49,13 +49,31 @@ class _QueuedEmit:
     """One pending notification queued before the initialize handshake.
 
     Stored verbatim so the post-init flush can replay it through the
-    normal session send path. The ``uri`` field is the canonical
-    ``waitbus://...`` URI; ``payload`` holds the dict the resource read
-    path would have synthesised.
+    normal session send path. The notification's ``kind`` discriminates
+    the two queued shapes:
+
+    - ``"resource_updated"`` (default): a spec-standard
+      ``notifications/resources/updated`` carrying the canonical
+      ``waitbus://...`` ``uri``. ``payload`` holds the dict the resource
+      read path would have synthesised; it is retained for diagnostics.
+    - ``"claude_channel"``: an Anthropic-private
+      ``notifications/claude/channel`` carrying ``content`` and ``meta``.
+      Queued pre-init because the client's negotiated experimental
+      capabilities (which gate this emit) are unavailable until the
+      initialize handshake populates ``ServerSession.client_params``;
+      the post-init flush is where that capability check finally runs.
+
+    A single queue type carries both shapes so the FIFO ordering across
+    the two notification methods is preserved exactly as the broadcast
+    stream produced them, rather than splitting into two parallel queues
+    that would reorder interleaved frames on flush.
     """
 
-    uri: str
-    payload: dict[str, Any]
+    kind: str = "resource_updated"
+    uri: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
+    content: str = ""
+    meta: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True, kw_only=True)

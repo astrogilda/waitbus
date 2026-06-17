@@ -112,6 +112,7 @@ tests/test_log.py
 tests/test_mcp_coverage.py
 tests/test_mcp_e2e.py
 tests/test_mcp_event_payload_cap.py
+tests/test_mcp_outputschema_conformance.py
 tests/test_mcp.py
 tests/test_mcp_session_state.py
 tests/test_mcp_surface.py

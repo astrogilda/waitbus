@@ -105,9 +105,13 @@ def test_e2e_synthetic_broadcast_emits_notifications(tmp_path: Path) -> None:
     )
     try:
         assert proc.stdin is not None
+        # Advertise the claude/channel experimental capability so the
+        # server's capability gate (FIX-4) emits the channel notification;
+        # a client that omits this correctly receives no channel traffic.
         proc.stdin.write(
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":'
-            '{"protocolVersion":"2025-06-18","capabilities":{},'
+            '{"protocolVersion":"2025-06-18",'
+            '"capabilities":{"experimental":{"claude/channel":{}}},'
             '"clientInfo":{"name":"e2e-test","version":"0.0.1"}}}\n'
         )
         proc.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
@@ -136,14 +140,15 @@ def _assert_e2e_notifications(stdout: str) -> None:
     drive); the assertion ladder lives here. Asserts:
 
     * Stdout is a JSONL stream of MCP messages (one JSON object per line).
-    * At least one ``notifications/claude/channel`` notification was emitted.
-    * At least one ``notifications/resources/updated`` notification was emitted.
+    * At least one ``notifications/claude/channel`` notification was emitted
+      (the client advertised the claude/channel experimental capability).
     * The claude/channel content is wrapped in the waitbus untrusted-field
       envelope (defense against prompt injection through webhook-derived text).
     * The claude/channel meta carries the synthetic-event identifiers
       (repo, kind, id, run_id, conclusion).
-    * The resources/updated params point at the synthetic event's
-      ``waitbus://event/<ulid>`` URI.
+    * NO ``notifications/resources/updated`` is emitted: the event URI is
+      not subscribable (FIX-2) and the client never sent resources/subscribe,
+      so the spec forbids any resources/updated for it.
 
     The synthetic-event identifiers are hard-coded against
     ``_SYNTHETIC_FRAME``; any drift in the frame's contents flows
@@ -165,7 +170,9 @@ def _assert_e2e_notifications(stdout: str) -> None:
     resource_notifs = [m for m in messages if m.get("method") == "notifications/resources/updated"]
 
     assert claude_notifs, f"no claude/channel notification emitted; got {messages!r}"
-    assert resource_notifs, f"no resources/updated notification emitted; got {messages!r}"
+    # FIX-2: the event URI is not subscribable and the client never
+    # subscribed, so zero resources/updated is the conformant outcome.
+    assert not resource_notifs, f"unexpected resources/updated for an unsubscribed client; got {resource_notifs!r}"
 
     claude_params = claude_notifs[0]["params"]
     # webhook-derived summary is fenced as untrusted external data
@@ -178,5 +185,3 @@ def _assert_e2e_notifications(stdout: str) -> None:
     assert claude_params["meta"]["id"] == "01HXSYNTHETIC2026ZZZZZZZZZZ"
     assert claude_params["meta"]["run_id"] == "42"
     assert claude_params["meta"]["conclusion"] == "success"
-
-    assert resource_notifs[0]["params"] == {"uri": "waitbus://event/01HXSYNTHETIC2026ZZZZZZZZZZ"}

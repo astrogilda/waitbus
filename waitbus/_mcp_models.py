@@ -139,18 +139,29 @@ class TailEvents(msgspec.Struct, kw_only=True, frozen=True):
 
 
 def _schema_for(cls: type) -> dict[str, Any]:
-    """Return a self-contained JSON Schema for ``cls``.
+    """Return a self-contained, MCP-conformant JSON Schema for ``cls``.
 
-    msgspec returns a (schema, components) pair. The SDK's validator
-    (jsonschema) resolves ``$ref`` against ``$defs`` inline, so we
-    embed components there. Inline embedding avoids registering a
-    separate resolver during validation.
+    msgspec returns a (schema, components) pair whose top-level entry is a
+    bare ``$ref`` into the components. MCP requires a tool ``outputSchema`` to
+    be a top-level object-type JSON Schema (``type: "object"`` at the root):
+    the official TypeScript SDK validates this with a Zod literal, so a strict
+    client (the MCP Inspector, and TS-SDK consumers such as Claude Desktop)
+    rejects ``tools/list`` when the schema is a ``$ref`` wrapper -- even though
+    the Python SDK's jsonschema validator resolves the ref transparently.
+
+    Inline the referenced root definition at the top level so ``type`` is
+    present at the root, and keep the remaining components under ``$defs`` for
+    any nested ``$ref`` to resolve against.
     """
     schema, components = msgspec.json.schema_components([cls], ref_template="#/$defs/{name}")
-    base = dict(schema[0])
+    root = dict(schema[0])
+    ref = root.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/$defs/"):
+        components = dict(components)
+        root = dict(components.pop(ref.rsplit("/", 1)[-1]))
     if components:
-        base["$defs"] = components
-    return base
+        root["$defs"] = components
+    return root
 
 
 def schema_ci_status() -> dict[str, Any]:
