@@ -291,6 +291,25 @@ for frame in subscribe(source="docker"):
     print(frame.event_type, frame.fields)
 ```
 
+Agents can also message each other on the same bus -- one sends a request and
+blocks for the correlated reply, the other answers from its inbox:
+
+```python
+from waitbus import request, respond, wait_for
+
+# responder (agent_b), in its own process
+msg = wait_for(to="agent_b", source="agent", timeout=5.0)
+if msg is not None:
+    respond(msg, '{"answer": 42}')             # sender defaults to msg's recipient
+
+# requester (agent_a)
+reply = request("agent_b", '{"ask": "meaning"}', sender="agent_a", timeout=5.0)
+# reply is the answer EventFrame, or None on timeout.
+```
+
+See [`docs/AGENT_MESSAGING.md`](docs/AGENT_MESSAGING.md) for the request/reply
+contract, the inbox stream, and the same-UID trust model.
+
 The stable public API is `emit`, `subscribe`, `asubscribe`, `wait_for`,
 `request`, `respond`, `EventFrame`, and the plugin hooks `register_source`,
 `register_condition`, `register_evaluator` (full signatures in

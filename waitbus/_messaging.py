@@ -236,6 +236,19 @@ def request(
         ``timeout`` -- a slow or absent peer, safe to retry. Raises
         :class:`BroadcastConnectionError` if the daemon connection drops mid-wait
         -- a dead daemon/peer, abort rather than retry.
+
+    Example:
+        Send one request and block for the correlated reply (illustrative;
+        needs a running daemon and a peer answering as ``agent_b``)::
+
+            >>> from waitbus import request
+            >>> reply = request(
+            ...     "agent_b", '{"ask": "meaning"}', sender="agent_a", timeout=5.0
+            ... )
+            >>> reply.fields["msg_from"] if reply is not None else None
+            'agent_b'
+
+        Full guide: https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md
     """
     correlation_id = correlation_id or _ulid.new()
     reply_to = reply_to or f"{sender}.{correlation_id}"
@@ -282,6 +295,16 @@ def respond(
         ValueError: ``request_frame`` is not an addressed message (it lacks
             ``msg_from`` / ``msg_correlation_id``), or ``sender`` could not be
             inferred and was not supplied.
+
+    Example:
+        Answer an inbound request (illustrative; needs a running daemon)::
+
+            >>> from waitbus import respond, wait_for
+            >>> req = wait_for(to="agent_b", source="agent", timeout=5.0)
+            >>> if req is not None:
+            ...     respond(req, '{"answer": 42}')  # sender defaults to req's msg_to
+
+        Full guide: https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md
     """
     fields = request_frame.fields
     correlation_id = fields.get("msg_correlation_id")
