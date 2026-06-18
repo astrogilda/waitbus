@@ -96,7 +96,7 @@ the first-class built-in `agent` source (alongside the `agent_claim` and
 `owner="local"` / `repo="agents"` labels (owner/repo are NOT NULL CI-era
 columns); all routing lives in the `msg_*` fields, never in owner/repo.
 
-### Why request() is race-free
+### Race-free requests
 
 `request()` needs **no** subscribe-before-send handshake. Correctness rests on
 the `msg_correlation_id` + recipient match, **not** on event ordering. The

@@ -105,9 +105,9 @@ will consume it:
 2. In a fresh shell, give a coding agent a realistic task and no prior
    context — e.g. "wait until pytest passes in this repo, then tell me which
    job failed", or "have two agents coordinate a handoff over waitbus".
-3. Watch which files and tool schemas it opens first, where it guesses, and
-   where it reaches for a private (`_`-prefixed) symbol. Each guess is a
-   missing breadcrumb.
+3. Watch which files and tool schemas it opens first, where it guesses (a gap
+   in the published surface), and where it reaches for a private (`_`-prefixed)
+   symbol.
 4. Fix the surface it stumbled on — a docstring, a schema description, the
    MCP server `instructions`, a doc pointer — and repeat.
 
