@@ -146,6 +146,11 @@ def emit(event: EventInsert, *, db_path: Path | None = None, doorbell_path: Path
         ValueError: if ``received_at`` is not a plausible epoch-ns value
             (``insert_event`` rejects sub-``NS_RECEIVED_AT_MIN`` magnitudes
             so a seconds/ms value cannot be silently persisted).
+
+    Example:
+        Build an :class:`EventInsert` and emit it. The ``waitbus emit`` CLI is
+        the simplest producer path; for the in-process form see
+        ``docs/snippets/minimal_emitter.py`` and ``examples/emitters/``.
     """
     target = _paths.resolve_db_path(db_path)
     with _db.connect(target) as conn:

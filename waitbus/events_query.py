@@ -167,7 +167,9 @@ def _check_single_statement(sql_no_comments: str) -> None:
         return
     if tail.strip():
         raise QueryRejectedError(
-            "events query rejects multi-statement input; submit one SELECT (optionally with a trailing semicolon)"
+            "events query rejects multi-statement input; submit one SELECT "
+            "(optionally with a trailing semicolon). See CONSUMER_API.md §4 "
+            "for the queryable events schema."
         )
 
 
@@ -187,7 +189,9 @@ def _check_leading_keyword(sql_no_comments: str) -> None:
     first_word = re.split(r"[\s(;]", text, maxsplit=1)[0].upper()
     if first_word not in _ALLOWED_LEADING_KEYWORDS:
         raise QueryRejectedError(
-            f"events query rejects {first_word!r}-rooted statements; only SELECT and WITH (CTE) are allowed"
+            f"events query rejects {first_word!r}-rooted statements; only SELECT "
+            "and WITH (CTE) are allowed. See CONSUMER_API.md §4 for the queryable "
+            "events schema."
         )
 
 
@@ -210,7 +214,8 @@ def _check_forbidden_tokens(sql_no_comments: str) -> None:
         if re.search(rf"\b{token}\b", scan_text):
             raise QueryRejectedError(
                 f"events query rejects statements containing {token!r}; "
-                "those can mutate connection state even from a SELECT"
+                "those can mutate connection state even from a SELECT. See "
+                "CONSUMER_API.md §4 for the queryable events schema."
             )
 
 
@@ -257,7 +262,10 @@ def validate(sql: str) -> str:
         raise QueryRejectedError("events query received empty SQL")
     stripped = _strip_comments(sql)
     if not stripped.strip():
-        raise QueryRejectedError("events query received comment-only SQL; include a SELECT statement")
+        raise QueryRejectedError(
+            "events query received comment-only SQL; include a SELECT statement. "
+            "See CONSUMER_API.md §4 for the queryable events schema."
+        )
     _check_single_statement(stripped)
     _check_leading_keyword(stripped)
     _check_forbidden_tokens(stripped)

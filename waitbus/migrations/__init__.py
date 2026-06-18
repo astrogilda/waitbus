@@ -22,8 +22,8 @@ remains owned by ``ensure_schema`` (which materialises the current
 already-bootstrapped DB; ``waitbus init`` runs both, marking the
 baseline migration as applied on a fresh DB.
 
-See ``docs/architecture/SCHEMA_MIGRATIONS.md`` for the operator-facing
-runbook.
+See the "Schema migrations" section of ``docs/ARCHITECTURE.md`` for the
+operator-facing runbook.
 """
 
 from __future__ import annotations
