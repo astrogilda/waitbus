@@ -9,6 +9,7 @@ install and quick-start; the documents below go deeper.
 | Document | What it covers |
 |---|---|
 | [CONSUMER_API.md](CONSUMER_API.md) | The stable public contracts: the broadcast wire protocol, frame kinds, the subscribe handshake, and the reject taxonomy. Read this to write a subscriber. |
+| [AGENT_MESSAGING.md](AGENT_MESSAGING.md) | Agent-to-agent request/reply over the bus: the `request` / `respond` SDK, the inbox stream, the message envelope, and the same-UID trust model. The Python companion to the MCP `emit_agent_message` / `read_agent_messages` tools. |
 | [CUSTOM_SOURCES.md](CUSTOM_SOURCES.md) | Writing a custom event source as a versioned entry-point plugin. |
 | [EXIT_CODES.md](EXIT_CODES.md) | The CLI exit-code contract for `waitbus wait` / `on` / `serve`. |
 | [snippets/](snippets/) | Minimal subscriber snippets in Python, Rust, Go, TypeScript, and bash. |

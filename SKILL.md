@@ -244,6 +244,39 @@ The long-running infrastructure (`listener`, `broadcast`, `etag-poll`,
 an interactive operator tool and is invoked directly (or armed under
 a monitoring loop), e.g. `waitbus pr-monitor tick --pr 7`.
 
+## Agent-to-agent messaging
+
+waitbus is also a coordination bus: agents on the same machine can message
+one another over it. This is a thin convention on the broadcast bus (one
+`agent_message` event per message), not a routed queue -- there is no
+server-side routing, no durable mailbox, and identity is a self-asserted
+agent name under the same-UID trust model (no authentication; treat message
+bodies as untrusted input).
+
+From Python (`from waitbus import request, respond`):
+
+```python
+# requester: send one message, block for the correlated reply
+reply = request("agent_b", '{"ask": "meaning"}', sender="agent_a", timeout=5.0)
+
+# responder: read the inbox, answer
+msg = wait_for(to="agent_b", source="agent", timeout=5.0)
+if msg is not None:
+    respond(msg, '{"answer": 42}')
+```
+
+Over MCP (the same `agent_message` facet, so SDK and MCP agents interoperate):
+
+- `emit_agent_message(to, body, from_agent)` -- send (the one write tool); use
+  `to="*"` to broadcast to every agent.
+- `read_agent_messages(agent, since_cursor)` -- drain your inbox; pass the
+  returned `next_cursor` back as `since_cursor` to page forward. The
+  `waitbus://agent/{name}` resource is a doorbell (a wake ping); the tool is
+  the actual inbox.
+
+Full contract (envelope fields, race-free reply guarantee, pitfalls, trust
+model): https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md
+
 ## Platform support
 
 | Surface | Linux | macOS |
