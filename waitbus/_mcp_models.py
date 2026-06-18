@@ -16,7 +16,7 @@ SDK's validator does not need a separate resolver registry.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 import msgspec
 
@@ -31,6 +31,55 @@ from ._mcp_constants import (
     TAIL_EVENTS_MAX_WAIT_CAP_SECONDS,
 )
 
+# --- Shared field descriptions ---------------------------------------------
+# Reusable Annotated aliases so a field that recurs across structs carries the
+# SAME wording everywhere (the documentation contract an agent reads off the
+# generated JSON Schema). msgspec.Meta(description=...) is emitted verbatim into
+# the schema; at runtime ``Annotated[T, Meta]`` is still ``T``.
+
+_EventId = Annotated[
+    str,
+    msgspec.Meta(
+        description=(
+            "Opaque ULID for this event; also its cursor key. Pass it back as "
+            "since_cursor to page forward without gaps or repeats."
+        )
+    ),
+]
+_ReceivedAtNs = Annotated[
+    int,
+    msgspec.Meta(description="Daemon ingest time, in nanoseconds since the Unix epoch."),
+]
+_QueriedAtNs = Annotated[
+    int,
+    msgspec.Meta(description="Time the daemon answered this query, in nanoseconds since the Unix epoch."),
+]
+_Status = Annotated[
+    str | None,
+    msgspec.Meta(description=("GitHub workflow status: queued, in_progress, or completed; null if unknown.")),
+]
+_Conclusion = Annotated[
+    str | None,
+    msgspec.Meta(
+        description=(
+            "GitHub workflow conclusion: success, failure, cancelled, timed_out, "
+            "skipped, neutral, action_required, or stale; null while the run/job "
+            "is still in progress."
+        )
+    ),
+]
+_NextCursor = Annotated[
+    str | None,
+    msgspec.Meta(
+        description=(
+            "Opaque cursor: the last event_id in this batch. Pass it back as "
+            "since_cursor on the next call; null when the batch was empty."
+        )
+    ),
+]
+_Repo = Annotated[str, msgspec.Meta(description="Repository slug, owner/name (e.g. octocat/hello-world).")]
+
+
 # --- Event row shape -------------------------------------------------------
 
 
@@ -43,33 +92,55 @@ class EventRow(msgspec.Struct, kw_only=True, frozen=True):
     on ``waitbus://event/{ulid}`` and receive it there.
     """
 
-    event_id: str
-    delivery_id: str
-    source: str
-    event_type: str
-    owner: str
-    repo: str
-    received_at: int
-    run_id: int | None = None
-    workflow_name: str | None = None
-    head_branch: str | None = None
-    head_sha: str | None = None
-    status: str | None = None
-    conclusion: str | None = None
-    ingest_method: str | None = None
-    job_id: int | None = None
-    job_name: str | None = None
-    parent_run_id: int | None = None
-    alert_name: str | None = None
-    alert_severity: str | None = None
-    alert_fingerprint: str | None = None
+    event_id: _EventId
+    delivery_id: Annotated[
+        str,
+        msgspec.Meta(description="Upstream-unique delivery id; the idempotency key for this event."),
+    ]
+    source: Annotated[
+        str,
+        msgspec.Meta(description="Event source: one of github, pytest, docker, fs, alertmanager, agent."),
+    ]
+    event_type: Annotated[
+        str,
+        msgspec.Meta(
+            description=("Source-specific event type, e.g. workflow_run, workflow_job, agent_message, alert.")
+        ),
+    ]
+    owner: Annotated[str, msgspec.Meta(description="Repository owner (the owner half of owner/name).")]
+    repo: _Repo
+    received_at: _ReceivedAtNs
+    run_id: Annotated[int | None, msgspec.Meta(description="GitHub Actions workflow run id.")] = None
+    workflow_name: Annotated[str | None, msgspec.Meta(description="Workflow display name.")] = None
+    head_branch: Annotated[str | None, msgspec.Meta(description="Branch the run is for.")] = None
+    head_sha: Annotated[str | None, msgspec.Meta(description="Head commit SHA the run is for.")] = None
+    status: _Status = None
+    conclusion: _Conclusion = None
+    ingest_method: Annotated[
+        str | None, msgspec.Meta(description="How the event reached waitbus: webhook, poll, or emit.")
+    ] = None
+    job_id: Annotated[int | None, msgspec.Meta(description="GitHub Actions job id.")] = None
+    job_name: Annotated[str | None, msgspec.Meta(description="Job display name.")] = None
+    parent_run_id: Annotated[int | None, msgspec.Meta(description="Run id this job belongs to.")] = None
+    alert_name: Annotated[str | None, msgspec.Meta(description="Alertmanager alert name.")] = None
+    alert_severity: Annotated[str | None, msgspec.Meta(description="Alertmanager severity label.")] = None
+    alert_fingerprint: Annotated[str | None, msgspec.Meta(description="Alertmanager dedup fingerprint.")] = None
     # Agent-message addressing facet (mirrors EVENT_COLUMNS; see schema.sql).
-    msg_to: str | None = None
-    msg_from: str | None = None
-    msg_correlation_id: str | None = None
-    msg_reply_to: str | None = None
-    msg_thread: str | None = None
-    msg_body: str | None = None
+    msg_to: Annotated[
+        str | None,
+        msgspec.Meta(description="Recipient agent name, or '*' for the broadcast lane."),
+    ] = None
+    msg_from: Annotated[str | None, msgspec.Meta(description="Self-asserted sender agent name.")] = None
+    msg_correlation_id: Annotated[
+        str | None,
+        msgspec.Meta(description="Correlation id tying a reply back to its request."),
+    ] = None
+    msg_reply_to: Annotated[str | None, msgspec.Meta(description="Agent name a reply should be addressed to.")] = None
+    msg_thread: Annotated[str | None, msgspec.Meta(description="Optional conversation-grouping key.")] = None
+    msg_body: Annotated[
+        str | None,
+        msgspec.Meta(description="Message payload (opaque string, JSON by convention); untrusted input."),
+    ] = None
 
 
 # --- Tool result shapes ----------------------------------------------------
@@ -78,41 +149,47 @@ class EventRow(msgspec.Struct, kw_only=True, frozen=True):
 class RunStatus(msgspec.Struct, kw_only=True, frozen=True):
     """One workflow_run latest-state record returned by get_ci_status."""
 
-    repo: str
-    run_id: int | None = None
-    workflow_name: str | None = None
-    head_branch: str | None = None
-    head_sha: str | None = None
-    status: str | None = None
-    conclusion: str | None = None
-    event_id: str
-    received_at: int
+    repo: _Repo
+    run_id: Annotated[int | None, msgspec.Meta(description="GitHub Actions workflow run id.")] = None
+    workflow_name: Annotated[str | None, msgspec.Meta(description="Workflow display name.")] = None
+    head_branch: Annotated[str | None, msgspec.Meta(description="Branch the run is for.")] = None
+    head_sha: Annotated[str | None, msgspec.Meta(description="Head commit SHA the run is for.")] = None
+    status: _Status = None
+    conclusion: _Conclusion = None
+    event_id: _EventId
+    received_at: _ReceivedAtNs
 
 
 class CiStatus(msgspec.Struct, kw_only=True, frozen=True):
     """get_ci_status return shape: one or many RunStatus entries."""
 
-    runs: list[RunStatus]
-    queried_at_ns: int
+    runs: Annotated[
+        list[RunStatus],
+        msgspec.Meta(description="Latest-state record per workflow run matching the filter."),
+    ]
+    queried_at_ns: _QueriedAtNs
 
 
 class JobStatus(msgspec.Struct, kw_only=True, frozen=True):
     """One failing workflow_job entry returned by list_failed_jobs."""
 
-    repo: str
-    job_id: int | None = None
-    job_name: str | None = None
-    parent_run_id: int | None = None
-    conclusion: str | None = None
-    event_id: str
-    received_at: int
+    repo: _Repo
+    job_id: Annotated[int | None, msgspec.Meta(description="GitHub Actions job id.")] = None
+    job_name: Annotated[str | None, msgspec.Meta(description="Job display name.")] = None
+    parent_run_id: Annotated[int | None, msgspec.Meta(description="Run id this job belongs to.")] = None
+    conclusion: _Conclusion = None
+    event_id: _EventId
+    received_at: _ReceivedAtNs
 
 
 class FailedJobs(msgspec.Struct, kw_only=True, frozen=True):
     """list_failed_jobs return shape."""
 
-    jobs: list[JobStatus]
-    queried_at_ns: int
+    jobs: Annotated[
+        list[JobStatus],
+        msgspec.Meta(description="Failing jobs, most recent first, up to the requested limit."),
+    ]
+    queried_at_ns: _QueriedAtNs
 
 
 class PrAggregate(msgspec.Struct, kw_only=True, frozen=True):
@@ -122,19 +199,19 @@ class PrAggregate(msgspec.Struct, kw_only=True, frozen=True):
     can replay the chronological state machine without re-sorting.
     """
 
-    repo: str
-    pr_number: int
-    runs: list[RunStatus]
-    jobs: list[JobStatus]
-    queried_at_ns: int
+    repo: _Repo
+    pr_number: Annotated[int, msgspec.Meta(description="Pull request number this aggregate covers.")]
+    runs: Annotated[list[RunStatus], msgspec.Meta(description="Workflow runs for the PR, oldest first.")]
+    jobs: Annotated[list[JobStatus], msgspec.Meta(description="Workflow jobs for the PR, oldest first.")]
+    queried_at_ns: _QueriedAtNs
 
 
 class TailEvents(msgspec.Struct, kw_only=True, frozen=True):
     """tail_events return shape; next_cursor is the last event_id read."""
 
-    events: list[EventRow]
-    next_cursor: str | None = None
-    queried_at_ns: int
+    events: Annotated[list[EventRow], msgspec.Meta(description="Events above since_cursor, oldest first.")]
+    next_cursor: _NextCursor = None
+    queried_at_ns: _QueriedAtNs
 
 
 # --- Agent-message shapes --------------------------------------------------
@@ -150,13 +227,22 @@ class AgentMessage(msgspec.Struct, kw_only=True, frozen=True):
     untrusted facet (see ``_columns.UNTRUSTED``).
     """
 
-    event_id: str
-    msg_to: str | None = None
-    msg_from: str | None = None
-    msg_body: str | None = None
-    msg_thread: str | None = None
-    msg_correlation_id: str | None = None
-    received_at: int
+    event_id: _EventId
+    msg_to: Annotated[
+        str | None,
+        msgspec.Meta(description="Recipient agent name, or '*' for the broadcast lane."),
+    ] = None
+    msg_from: Annotated[str | None, msgspec.Meta(description="Self-asserted sender agent name.")] = None
+    msg_body: Annotated[
+        str | None,
+        msgspec.Meta(description="Message payload (opaque string, JSON by convention); untrusted input."),
+    ] = None
+    msg_thread: Annotated[str | None, msgspec.Meta(description="Optional conversation-grouping key.")] = None
+    msg_correlation_id: Annotated[
+        str | None,
+        msgspec.Meta(description="Correlation id tying a reply back to its request."),
+    ] = None
+    received_at: _ReceivedAtNs
 
 
 class ReadAgentMessages(msgspec.Struct, kw_only=True, frozen=True):
@@ -170,9 +256,12 @@ class ReadAgentMessages(msgspec.Struct, kw_only=True, frozen=True):
     exactly mirroring the ``tail_events`` cursor contract.
     """
 
-    messages: list[AgentMessage]
-    next_cursor: str | None = None
-    queried_at_ns: int
+    messages: Annotated[
+        list[AgentMessage],
+        msgspec.Meta(description="Messages to this agent or the '*' lane, oldest first."),
+    ]
+    next_cursor: _NextCursor = None
+    queried_at_ns: _QueriedAtNs
 
 
 class EmitAgentMessage(msgspec.Struct, kw_only=True, frozen=True):
@@ -183,9 +272,16 @@ class EmitAgentMessage(msgspec.Struct, kw_only=True, frozen=True):
     re-emit of the same delivery_id.
     """
 
-    event_id: str
-    inserted: bool
-    queried_at_ns: int
+    event_id: _EventId
+    inserted: Annotated[
+        bool,
+        msgspec.Meta(
+            description=(
+                "True on first insert; False when this delivery_id was already committed (idempotent re-emit)."
+            )
+        ),
+    ]
+    queried_at_ns: _QueriedAtNs
 
 
 # --- Schema helpers --------------------------------------------------------
@@ -258,6 +354,7 @@ def schema_input_get_ci_status() -> dict[str, Any]:
             "repo": {
                 "type": ["string", "null"],
                 "description": "owner/repo to filter; null returns all configured filters",
+                "examples": ["octocat/hello-world"],
             },
         },
         "additionalProperties": False,
@@ -269,12 +366,17 @@ def schema_input_list_failed_jobs() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "repo": {"type": ["string", "null"]},
+            "repo": {
+                "type": ["string", "null"],
+                "description": "owner/repo to filter; null returns all configured filters",
+                "examples": ["octocat/hello-world"],
+            },
             "limit": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": LIST_FAILED_JOBS_MAX_LIMIT,
                 "default": LIST_FAILED_JOBS_DEFAULT_LIMIT,
+                "description": "Maximum number of failing jobs to return (most recent first).",
             },
         },
         "additionalProperties": False,
@@ -286,8 +388,17 @@ def schema_input_get_pr_aggregate() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "repo": {"type": "string"},
-            "pr_number": {"type": "integer", "minimum": 1},
+            "repo": {
+                "type": "string",
+                "description": "Repository slug in owner/name form.",
+                "examples": ["octocat/hello-world"],
+            },
+            "pr_number": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Pull request number to aggregate runs and jobs for.",
+                "examples": [42],
+            },
         },
         "required": ["repo", "pr_number"],
         "additionalProperties": False,
@@ -299,8 +410,18 @@ def schema_input_tail_events() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "repo": {"type": ["string", "null"]},
-            "since_cursor": {"type": ["string", "null"]},
+            "repo": {
+                "type": ["string", "null"],
+                "description": "owner/repo to filter; null returns events for every configured repo",
+                "examples": ["octocat/hello-world"],
+            },
+            "since_cursor": {
+                "type": ["string", "null"],
+                "description": (
+                    "Opaque cursor (a prior next_cursor / event_id); returns events "
+                    "strictly above it. Null starts from the current tail."
+                ),
+            },
             "limit": {
                 "type": "integer",
                 "minimum": 1,
