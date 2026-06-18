@@ -367,7 +367,7 @@ async def _ping_session_uri(session: ServerSession, state: _SessionState, uri: s
 async def _emit_agent_doorbell(frame: dict[str, Any]) -> None:
     """Route an agent_message frame to the agent-doorbell subscribers.
 
-    Per SWARM_DESIGN.md "Wildcard fan-out + dedup": each subscribed
+    Per the agent-message fan-out design (docs/AGENT_MESSAGING.md): each subscribed
     ``ServerSession`` receives EXACTLY ONE ``resources/updated`` ping for
     this message, regardless of how many ``waitbus://agent/...``
     subscriptions it holds, and ``waitbus://current`` subscribers are NOT
@@ -683,7 +683,7 @@ def _payload_matches_pr(payload: dict[str, Any], pr_number: int) -> bool:
 def _event_type_filter(event_types: list[str] | None) -> tuple[str, tuple[Any, ...]]:
     """Build the event_type WHERE fragment + params for tail_events.
 
-    Two modes, per SWARM_DESIGN.md "Event-stream partitioning":
+    Two modes (the default lane excludes agent_message; see docs/AGENT_MESSAGING.md):
 
     - ``event_types`` omitted (None): the DEFAULT lane EXCLUDES
       ``agent_message`` so a CI-watching agent never ingests agent
@@ -864,13 +864,13 @@ def _emit_agent_message_impl(to: str, body: str, from_agent: str, thread_id: str
     The event_type (``agent_message``) and source (``agent``) are
     HARDCODED here -- they are not tool inputs, so the model has exactly
     one typed, validated lane it cannot fat-finger into the CI stream
-    (SWARM_DESIGN.md "Emit"). The body rides ``msg_body`` (the lean wire
+    (see docs/AGENT_MESSAGING.md). The body rides ``msg_body`` (the lean wire
     frame drops ``payload_json``, so the body could not otherwise reach the
     recipient); a fresh ULID correlation id is stamped so every message is
     uniquely referenceable, and ``thread_id`` maps to ``msg_thread``.
 
     Identity (``msg_from``/``msg_to``) is self-asserted under the same-UID
-    trust model -- no spoof protection (SWARM_DESIGN.md "Out of scope").
+    trust model -- no spoof protection (see docs/AGENT_MESSAGING.md).
     """
     from ._emit import emit
     from ._types import EventInsert
@@ -930,7 +930,7 @@ def _read_agent_messages_impl(agent: str, since_cursor: str | None, limit: int) 
     daemon-assigned commit order (``seq``) so the cursor advances
     monotonically. This is the PULL side of the doorbell: the doorbell
     fires a ``resources/updated`` ping, and the client drains the delta
-    here -- nothing re-delivers history (SWARM_DESIGN.md "Receive").
+    here -- nothing re-delivers history (see docs/AGENT_MESSAGING.md).
     """
     queried_at = time.time_ns()
     db = _paths.db_path()
@@ -1135,8 +1135,8 @@ def _agent_doorbell_stub(agent_name: str, uri_str: str) -> list[ReadResourceCont
     ``resources/read`` has no cursor and no ack, so returning the messages
     here would dump the whole durable history on every read and exhaust the
     model's context. The stub directs the client to the cursor-paginated
-    ``read_agent_messages`` tool (SWARM_DESIGN.md "Receive -- a cursor
-    tool, NOT a resource").
+    ``read_agent_messages`` tool (a cursor-paginated tool, not a
+    resource; see docs/AGENT_MESSAGING.md).
     """
     stub = {
         "agent": agent_name,
@@ -1567,7 +1567,9 @@ def _register_handlers(server: WaitbusServer) -> None:
                 title="Single event",
                 description=(
                     "Read-only snapshot of one stored event row by its "
-                    "opaque ULID, including the fenced raw webhook payload."
+                    "opaque ULID, including the fenced raw webhook payload. "
+                    "Events schema and resource cap: "
+                    "https://github.com/astrogilda/waitbus/blob/main/docs/CONSUMER_API.md"
                 ),
                 mimeType="application/json",
             ),

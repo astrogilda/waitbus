@@ -236,7 +236,7 @@ def agent_doorbell_uri_for_session(
 ) -> str | None:
     """Return the ONE agent-doorbell URI to ping a session for, or None.
 
-    The dedup contract (SWARM_DESIGN.md "Wildcard fan-out + dedup"): a
+    The dedup contract (see docs/AGENT_MESSAGING.md): a
     session receives at most one ``resources/updated`` ping per committed
     ``agent_message``, regardless of how many ``waitbus://agent/...``
     subscriptions it holds.

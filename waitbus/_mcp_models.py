@@ -456,7 +456,7 @@ def schema_input_emit_agent_message() -> dict[str, Any]:
 
     ``event_type`` and ``source`` are NOT inputs: the tool hardcodes
     ``agent_message`` / ``agent`` on insert so the model cannot fat-finger
-    the typed lane (SWARM_DESIGN.md "Emit").
+    the typed lane (see docs/AGENT_MESSAGING.md).
     """
     return {
         "type": "object",

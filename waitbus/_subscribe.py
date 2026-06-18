@@ -343,6 +343,14 @@ def wait_for(
             fields).
 
     An async caller bridges via ``await asyncio.to_thread(wait_for, ...)``.
+
+    Example:
+        Block for the first failing CI run, then act (illustrative; needs a
+        running daemon)::
+
+            >>> from waitbus import wait_for
+            >>> frame = wait_for('fields.conclusion="failure"', source="github", timeout=600)
+            >>> (frame.event_type, frame.fields) if frame is not None else None
     """
     if all_of is not None or first_of is not None:
         _validate_compose_kwargs(all_of, first_of, match, source, to)
@@ -398,6 +406,14 @@ def subscribe(
     ``first_of`` streams every event matching ANY clause, across sources;
     there is no ``all_of`` on a stream -- a sticky conjunction is one-shot
     semantics (use :func:`wait_for`).
+
+    Example:
+        Stream Docker events as they land (illustrative; needs a running
+        daemon)::
+
+            >>> from waitbus import subscribe
+            >>> for frame in subscribe(source="docker"):
+            ...     print(frame.event_type, frame.fields)
     """
     composed = _resolve_stream_predicate(match, source, to, first_of)
     handle = open_subscriber(since=since, socket_path=socket_path)
