@@ -1,20 +1,43 @@
-"""waitbus: report GitHub Actions CI status from locally-cached webhook events.
+"""waitbus: a workstation-local, cross-harness status and coordination bus.
 
-Package providing the listener, ETag-poll fallback, query CLI, watchdog
-absence-detector, and the broadcast daemon. Each module is invocable as
-`python -m waitbus.<module>` or via its installed console-script
-(`waitbus-listener`, `waitbus-broadcast`, etc.). The systemd units
-shipped under `share/systemd/user/` dispatch to the console-script paths.
+Wait on -- or broadcast -- events from any source on one machine, without
+polling and without a cloud. CI runs (GitHub Actions is source #1), pytest
+sessions, Docker engine events, and filesystem changes fan out over a local,
+same-UID socket; agents can also message one another on the same bus. GitHub
+Actions is the first source, not the whole product.
 
-Library-mode usage: `import waitbus.<x>` is import-side-effect-free.
-The `ensure_state_dirs()` helper in `waitbus._paths` is invoked only
-from entry-point `main()` functions, never at import.
+Command line: a single ``waitbus`` entry point dispatches every sub-command
+(e.g. ``waitbus wait``, ``waitbus serve``, ``waitbus mcp serve``,
+``waitbus listener serve``). There are no per-module console scripts; the
+systemd/launchd units shipped under ``share/`` invoke the umbrella CLI with
+sub-command verbs.
+
+Library use (``import waitbus``) is import-side-effect-free and cheap: only the
+light predicate hooks load eagerly, and the public API resolves lazily on first
+access (PEP 562). The public surface:
+
+    emit, register_source                              -- producer side
+    subscribe, wait_for, asubscribe, EventFrame        -- consumer side
+    request, respond                                   -- agent-to-agent messaging
+
+Source:  https://github.com/astrogilda/waitbus
+Issues:  https://github.com/astrogilda/waitbus/issues
+Docs:    https://github.com/astrogilda/waitbus#readme -- for the README matching
+         your installed build, use ``.../tree/v{waitbus.__version__}#readme``
+         (the unversioned link tracks main and may describe a newer API).
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Any
+
+# Version introspection at the package root (PEP 396 convention): tooling and
+# agents expect ``waitbus.__version__``. Single source of truth is
+# ``waitbus._version.PACKAGE_VERSION`` (resolved from installed metadata).
+from ._version import PACKAGE_VERSION
+
+__version__ = PACKAGE_VERSION
 
 # Re-export the predicate-engine plugin hooks so Layer-2 extras packages
 # (e.g. waitbus-cel, waitbus-jmespath) can register from a single, stable
