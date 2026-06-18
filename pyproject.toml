@@ -208,6 +208,8 @@ only-include = [
   "systemd",
   "installers",
   "tests",
+  "AGENTS.md",
+  "llms.txt",
   "SKILL.md",
   "README.md",
   ".github/CONTRIBUTING.md",

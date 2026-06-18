@@ -89,6 +89,35 @@ to compute orphan units from previous package versions.
 
 ---
 
+## Agent doc-QA
+
+waitbus's primary users are coding agents, so the docs have a second reader:
+the model that reads them to write code. Before finalising a change that
+touches the public surface — the `waitbus/__init__.py` docstring, the MCP tool
+descriptions / schemas in `waitbus/mcp.py` and `waitbus/_mcp_models.py`, the
+SDK docstrings, `AGENTS.md`, the README, or `docs/` — QA it the way an agent
+will consume it:
+
+1. Build and install into a clean environment:
+   ```bash
+   uv build --wheel && uv tool install --force dist/waitbus-*.whl
+   ```
+2. In a fresh shell, give a coding agent a realistic task and no prior
+   context — e.g. "wait until pytest passes in this repo, then tell me which
+   job failed", or "have two agents coordinate a handoff over waitbus".
+3. Watch which files and tool schemas it opens first, where it guesses, and
+   where it reaches for a private (`_`-prefixed) symbol. Each guess is a
+   missing breadcrumb.
+4. Fix the surface it stumbled on — a docstring, a schema description, the
+   MCP server `instructions`, a doc pointer — and repeat.
+
+`uvx waitbus demo` and `uvx waitbus swarm-demo` run fully offline in a temp
+directory, so this loop is cheap and needs no real CI wiring. The goal: an
+agent can use waitbus correctly from the published surface alone, without
+reading the source.
+
+---
+
 ## Development install vs released install
 
 **Working from a checkout:**

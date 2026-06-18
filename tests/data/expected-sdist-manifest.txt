@@ -1,3 +1,4 @@
+AGENTS.md
 CHANGELOG.md
 .github/CONTRIBUTING.md
 .gitignore
@@ -7,6 +8,7 @@ installers/launchd/dev.waitbus.listener.plist
 installers/launchd/dev.waitbus.watchdog.plist
 installers/launchd/MANIFEST.txt
 LICENSE
+llms.txt
 NOTICE
 PKG-INFO
 pyproject.toml
