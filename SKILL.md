@@ -275,7 +275,7 @@ Over MCP (the same `agent_message` facet, so SDK and MCP agents interoperate):
   the actual inbox.
 
 Full contract (envelope fields, race-free reply guarantee, pitfalls, trust
-model): https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md
+model): [docs/AGENT_MESSAGING.md](docs/AGENT_MESSAGING.md)
 
 ## Platform support
 
