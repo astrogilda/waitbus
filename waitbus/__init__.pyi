@@ -19,6 +19,9 @@ from ._subscribe import subscribe as subscribe
 from ._subscribe import wait_for as wait_for
 from .sources._registry import register_source as register_source
 
+# Package version (PEP 396); not part of the curated ``__all__`` public surface.
+__version__: str
+
 # Runtime-only internals the test suite / drift-guard reference (not public API).
 _LAZY_EXPORTS: dict[str, str]
 
