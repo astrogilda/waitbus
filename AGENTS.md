@@ -22,9 +22,11 @@ the same bus.
   releases; do not import it.
 - **As an MCP server** (`uvx --from waitbus waitbus mcp serve`): the server's
   own `instructions` and each tool's `inputSchema` / `outputSchema` document
-  the surface, so read those first. The tools are `get_ci_status`,
-  `list_failed_jobs`, `get_pr_aggregate`, `tail_events`, `emit_agent_message`,
-  and `read_agent_messages`.
+  the surface, so read those first. The tools are `query_ci` (with a required
+  `view` of `status`, `failed_jobs`, or `pr_aggregate`), `get_event`,
+  `tail_events`, and, when `waitbus mcp serve` runs with the default-on
+  `--enable-agent-messaging` flag, `emit_agent_message` and
+  `read_agent_messages`.
 
 ## Documentation map
 

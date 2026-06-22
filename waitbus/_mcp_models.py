@@ -23,6 +23,10 @@ import msgspec
 from ._mcp_constants import (
     LIST_FAILED_JOBS_DEFAULT_LIMIT,
     LIST_FAILED_JOBS_MAX_LIMIT,
+    QUERY_CI_VIEW_FAILED_JOBS,
+    QUERY_CI_VIEW_PR_AGGREGATE,
+    QUERY_CI_VIEW_STATUS,
+    QUERY_CI_VIEWS,
     READ_AGENT_MESSAGES_DEFAULT_LIMIT,
     READ_AGENT_MESSAGES_MAX_LIMIT,
     TAIL_EVENTS_DEFAULT_LIMIT,
@@ -313,6 +317,29 @@ def _schema_for(cls: type) -> dict[str, Any]:
     return root
 
 
+def schema_event_row() -> dict[str, Any]:
+    """JSON Schema for the get_event return value (a single EventRow).
+
+    Mirrors the event resource shape (waitbus://event/{ulid}): the same
+    EventRow projection, including ``payload_json`` which the tool
+    populates with either the fenced raw payload or, when it would exceed
+    the payload cap, a truncation marker carrying a raw_uri pointer. The
+    payload field is left out of the strict struct (it is provenance-typed
+    at runtime: a fenced string OR a marker object), so it is added here as
+    an explicit, loosely-typed property.
+    """
+    schema = _schema_for(EventRow)
+    props = schema.setdefault("properties", {})
+    props["payload_json"] = {
+        "description": (
+            "The event's raw webhook payload, fenced as untrusted external "
+            "data. Oversize payloads return a truncation marker object with "
+            "a raw_uri pointer to waitbus://event/{ulid}/raw instead."
+        ),
+    }
+    return schema
+
+
 def schema_ci_status() -> dict[str, Any]:
     """JSON Schema for the get_ci_status return value."""
     return _schema_for(CiStatus)
@@ -346,61 +373,78 @@ def schema_emit_agent_message() -> dict[str, Any]:
 # --- Input schemas (hand-rolled; tools have very small arg surfaces) ------
 
 
-def schema_input_get_ci_status() -> dict[str, Any]:
-    """Input schema for get_ci_status."""
+def schema_input_query_ci() -> dict[str, Any]:
+    """Input schema for the consolidated query_ci tool.
+
+    ``view`` is the required selector over the three CI projections that
+    were previously three standalone tools. The per-view parameters
+    (repo, pr_number, limit) all live in one flat object; which of them
+    apply (and which are required) depends on ``view`` and is validated by
+    the handler rather than by JSON Schema, so the structured error can
+    name the missing-per-view params explicitly:
+
+    - ``status`` -- repo optional (null returns every configured repo).
+    - ``failed_jobs`` -- repo optional, limit optional.
+    - ``pr_aggregate`` -- repo AND pr_number required.
+    """
     return {
         "type": "object",
         "properties": {
+            "view": {
+                "type": "string",
+                "enum": list(QUERY_CI_VIEWS),
+                "description": (
+                    f"Which CI projection to return. {QUERY_CI_VIEW_STATUS!r}: latest "
+                    f"workflow_run per repo. {QUERY_CI_VIEW_FAILED_JOBS!r}: recent failing "
+                    f"workflow_job rows. {QUERY_CI_VIEW_PR_AGGREGATE!r}: every run and job "
+                    "for one pull request (requires repo and pr_number)."
+                ),
+            },
             "repo": {
                 "type": ["string", "null"],
-                "description": "owner/repo to filter; null returns all configured filters",
+                "description": (
+                    "owner/repo to filter; null returns all configured filters (required for the pr_aggregate view)."
+                ),
                 "examples": ["octocat/hello-world"],
             },
-        },
-        "additionalProperties": False,
-    }
-
-
-def schema_input_list_failed_jobs() -> dict[str, Any]:
-    """Input schema for list_failed_jobs."""
-    return {
-        "type": "object",
-        "properties": {
-            "repo": {
-                "type": ["string", "null"],
-                "description": "owner/repo to filter; null returns all configured filters",
-                "examples": ["octocat/hello-world"],
+            "pr_number": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "description": "Pull request number; required only for the pr_aggregate view.",
+                "examples": [42],
             },
             "limit": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": LIST_FAILED_JOBS_MAX_LIMIT,
                 "default": LIST_FAILED_JOBS_DEFAULT_LIMIT,
-                "description": "Maximum number of failing jobs to return (most recent first).",
+                "description": "Maximum failing jobs to return for the failed_jobs view (most recent first).",
             },
         },
+        "required": ["view"],
         "additionalProperties": False,
     }
 
 
-def schema_input_get_pr_aggregate() -> dict[str, Any]:
-    """Input schema for get_pr_aggregate."""
+def schema_input_get_event() -> dict[str, Any]:
+    """Input schema for get_event.
+
+    A single required ``ulid`` selects the stored event row. The tool is
+    the tool-surface parity for the waitbus://event/{ulid} resource, so a
+    tool-biased client that does not read resources can still fetch one
+    event by id.
+    """
     return {
         "type": "object",
         "properties": {
-            "repo": {
+            "ulid": {
                 "type": "string",
-                "description": "Repository slug in owner/name form.",
-                "examples": ["octocat/hello-world"],
-            },
-            "pr_number": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Pull request number to aggregate runs and jobs for.",
-                "examples": [42],
+                "minLength": 1,
+                "description": "Opaque ULID of the stored event to fetch (a prior event_id / cursor value).",
+                "examples": ["01HXZZZZZZZZZZZZZZZZZZZZZZ"],
             },
         },
-        "required": ["repo", "pr_number"],
+        "required": ["ulid"],
         "additionalProperties": False,
     }
 

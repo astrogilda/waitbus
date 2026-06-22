@@ -37,6 +37,15 @@ from typing import Any, Final
 _FENCE_OPEN: Final = "<waitbus:untrusted>"
 _FENCE_CLOSE: Final = "</waitbus:untrusted>"
 
+#: Tool-response delimiter for attacker-controllable event fields (PR
+#: titles, commit messages, log/body text) returned inside a structured
+#: tool result. A consuming LLM treats text between these tags as inert
+#: external data, never as instructions. Distinct from the channel-summary
+#: :data:`_FENCE_OPEN`/:data:`_FENCE_CLOSE` pair so a consumer can tell a
+#: one-line channel summary apart from a wrapped structured field.
+_EXTERNAL_OPEN: Final = "<external_event_data>"
+_EXTERNAL_CLOSE: Final = "</external_event_data>"
+
 # C0 controls except TAB (0x09) and LF (0x0A); DEL (0x7F); C1 (0x80-0x9F);
 # zero-width + bidi-override codepoints commonly used to hide payloads;
 # U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR (some renderers
@@ -57,6 +66,10 @@ _ANSI_RE: Final = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x
 # A literal close-fence anywhere in the payload, case-insensitively, with
 # optional internal whitespace -- the only way to forge the boundary.
 _CLOSE_SPOOF_RE: Final = re.compile(r"<\s*/\s*waitbus\s*:\s*untrusted\s*>", re.IGNORECASE)
+# A literal external-data close tag anywhere in the payload, case-
+# insensitively, with optional internal whitespace -- the only way to forge
+# the wrap_external boundary.
+_EXTERNAL_CLOSE_SPOOF_RE: Final = re.compile(r"<\s*/\s*external_event_data\s*>", re.IGNORECASE)
 # Provenance-label allowlist: only these characters survive into the
 # opening tag's attribute, so the label can never break out of it.
 _LABEL_RE: Final = re.compile(r"[^A-Za-z0-9._-]")
@@ -107,3 +120,32 @@ def fence(text: str, *, label: str) -> str:
     # attribute (no quotes/angle-brackets/spaces can ever reach the tag).
     safe_label = _LABEL_RE.sub("", label) or "external"
     return f'{_FENCE_OPEN[:-1]} label="{safe_label}">{clean}{_FENCE_CLOSE}'
+
+
+def wrap_external(text: str) -> str:
+    """Wrap an attacker-controllable tool-response field in the external delimiter.
+
+    Companion to :func:`fence` for STRUCTURED tool results (get_event /
+    tail_events / query_ci), where an event field carries free text an
+    attacker can influence (a PR title, a commit message, a job/workflow
+    name). The cleaned text is bracketed by
+    ``<external_event_data>...</external_event_data>`` so a consuming LLM
+    compartmentalises it from instructions. As with :func:`fence`, the
+    security-load-bearing element is the close tag: any literal close tag
+    inside ``text`` is rewritten so the boundary is unforgeable. The text
+    is also control-stripped (same hygiene as :func:`clean_opt`), so a
+    caller may pass either a raw or an already-stripped value.
+    """
+    clean = _EXTERNAL_CLOSE_SPOOF_RE.sub("(external_event_data)", strip_control(text))
+    return f"{_EXTERNAL_OPEN}{clean}{_EXTERNAL_CLOSE}"
+
+
+def wrap_external_opt(value: Any) -> Any:
+    """:func:`wrap_external` a value iff it is a non-empty ``str``; else pass through.
+
+    Preserves ``None`` and non-string semantics (clients distinguish null
+    from a wrapped empty string) and leaves an empty string unwrapped --
+    wrapping an empty value adds delimiter noise with no untrusted span to
+    isolate.
+    """
+    return wrap_external(value) if isinstance(value, str) and value else value

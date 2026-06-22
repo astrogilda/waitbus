@@ -11,9 +11,10 @@ Two contracts the Python-SDK e2e tests cannot catch because the Python
    the schema is a bare ``$ref`` wrapper. ``_schema_for`` inlines the root
    definition to satisfy this (FIX-1).
 
-2. Every tool carries ``annotations.readOnlyHint is True``. All four
-   waitbus tools are pure reads; advertising the read-only hint lets a
-   client surface them without a write-confirmation prompt (ADD-1).
+2. Every tool carries an explicit ``annotations.readOnlyHint``. The
+   waitbus read tools advertise it True so a client surfaces them without
+   a write-confirmation prompt; the one writer (emit_agent_message) sets
+   it False (ADD-1).
 """
 
 from __future__ import annotations
@@ -28,16 +29,23 @@ from waitbus._mcp_constants import TOOL_EMIT_AGENT_MESSAGE
 from waitbus._mcp_models import (
     schema_ci_status,
     schema_emit_agent_message,
+    schema_event_row,
     schema_failed_jobs,
     schema_pr_aggregate,
     schema_read_agent_messages,
     schema_tail_events,
 )
 
+# The three CI per-view schemas (status / failed_jobs / pr_aggregate) still
+# describe the structured content query_ci returns per view, and get_event's
+# event-row schema is advertised directly; all must satisfy the top-level
+# object contract even though query_ci itself advertises no single
+# outputSchema.
 _SCHEMA_BUILDERS: list[Callable[[], dict[str, Any]]] = [
     schema_ci_status,
     schema_failed_jobs,
     schema_pr_aggregate,
+    schema_event_row,
     schema_tail_events,
     schema_read_agent_messages,
     schema_emit_agent_message,
@@ -61,12 +69,13 @@ def test_output_schema_has_top_level_object_type(builder: Callable[[], dict[str,
 def test_every_tool_advertises_a_read_only_hint() -> None:
     """Every advertised tool sets readOnlyHint explicitly.
 
-    The five read tools set it True; the one writer (emit_agent_message)
+    The four read tools (query_ci, get_event, tail_events,
+    read_agent_messages) set it True; the one writer (emit_agent_message)
     sets it False so a client surfaces a write-confirmation prompt for it.
     No tool may leave the hint unset.
     """
     tools = mcp_mod._tool_definitions()
-    assert len(tools) == 6
+    assert len(tools) == 5
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} missing annotations"
         expected = tool.name != TOOL_EMIT_AGENT_MESSAGE

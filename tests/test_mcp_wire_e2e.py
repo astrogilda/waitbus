@@ -1,6 +1,6 @@
 """End-to-end wire test: a real MCP client drives ``waitbus mcp serve`` over stdio.
 
-Regression guard for the serve-loop dispatch gap. The four pull tools were
+Regression guard for the serve-loop dispatch gap. The pull tools were
 registered (``@server.list_tools`` / ``@server.call_tool``) and unit-tested at the
 implementation layer (``_tool_*_impl``), but ``mcp.main_async`` drained the
 incoming-request stream WITHOUT dispatching it -- it never called
@@ -40,7 +40,7 @@ _BOOTSTRAP = "from waitbus.cli.main import app; app()"
 # calls would hang forever; wait_for turns that into a fast, clear failure.
 _CALL_TIMEOUT_S = 20.0
 
-_EXPECTED_TOOLS = {"get_ci_status", "list_failed_jobs", "get_pr_aggregate", "tail_events"}
+_EXPECTED_TOOLS = {"query_ci", "get_event", "tail_events"}
 
 
 def _seed_workflow_run(state_dir: Path) -> None:
@@ -100,21 +100,21 @@ async def test_pull_tools_answer_over_stdio(tmp_path: Path) -> None:
 
         # tools/call dispatch, with real seeded data round-tripped.
         ci = await asyncio.wait_for(
-            session.call_tool("get_ci_status", {"repo": "example-org/waitbus"}),
+            session.call_tool("query_ci", {"view": "status", "repo": "example-org/waitbus"}),
             timeout=_CALL_TIMEOUT_S,
         )
         assert ci.structuredContent is not None
         runs = ci.structuredContent["runs"]
-        assert runs, "get_ci_status returned no runs over the wire"
+        assert runs, "query_ci status returned no runs over the wire"
         assert runs[0]["run_id"] == 42
         assert runs[0]["conclusion"] == "success"
 
-        # A second, distinct tool proves dispatch is generic (not
-        # get_ci_status-specific). Every tool and the resources below
-        # ride the identical _handle_message path, so two tools + a resource
-        # read fully exercise the serve-loop dispatch the bug had severed.
+        # A second view proves dispatch is generic (not status-specific).
+        # Every tool and the resources below ride the identical
+        # _handle_message path, so two calls + a resource read fully
+        # exercise the serve-loop dispatch the bug had severed.
         failed = await asyncio.wait_for(
-            session.call_tool("list_failed_jobs", {}),
+            session.call_tool("query_ci", {"view": "failed_jobs"}),
             timeout=_CALL_TIMEOUT_S,
         )
         assert failed.structuredContent is not None
