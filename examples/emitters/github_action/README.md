@@ -11,14 +11,14 @@ from inside the workflow instead.
 A composite action that synthesizes a minimal `workflow_run`-shaped
 completion payload from the runner context, signs it with your webhook
 secret (HMAC-SHA256, `X-Hub-Signature-256`), and POSTs it to
-`<listener-url>/webhook` — exactly the headers and payload shape the
-waitbus listener validates.
+`<listener-url>/webhook`. This is exactly the headers and payload shape
+the waitbus listener validates.
 
 ## The constraint
 
 The bus is **workstation-local by design**. GitHub's runners cannot
 reach your listener unless you deliberately expose it through a relay
-you own — a tailscale funnel, `cloudflared`, or an `ssh -R` tunnel.
+you own: a tailscale funnel, `cloudflared`, or an `ssh -R` tunnel.
 `listener-url` is that relay's hostname, not anything waitbus hosts for
 you. If you do not want to run a relay, stop here and use the built-in
 `github` source.

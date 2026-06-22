@@ -37,7 +37,7 @@ the model's message as an addressed `agent_message` event.
 ## Offline-test guarantee
 
 The package's e2e suite runs a **real in-process broadcast daemon** and a
-deterministic `TestModel` — no network, no LLM. A green suite means the
+deterministic `TestModel`: no network, no LLM. A green suite means the
 bus delivered and the agent woke. The daemon-backed tests are Linux-only
 (the daemon's peer-credential check uses `SO_PEERCRED`); on macOS they
 skip.

@@ -67,21 +67,21 @@ review-blocking defect: it is indistinguishable from a forgotten
 
 ## 4. Levels
 
-- `ERROR` — the daemon could not perform its core duty for this
+- `ERROR`: the daemon could not perform its core duty for this
   item (DB write failed, broadcast pass crashed). Operator action
   likely required.
-- `WARNING` — a recoverable degradation the operator should see (a
+- `WARNING`: a recoverable degradation the operator should see (a
   reconnect, a transient HTTP failure, a wedged-watcher backoff, a
   rejected subscribe field, a missing-DB completion).
-- `INFO` — lifecycle + progress (bound, listening, polled, done,
+- `INFO`: lifecycle + progress (bound, listening, polled, done,
   shutdown).
-- `DEBUG` — swallowed-but-explained internal detail (per §3).
+- `DEBUG`: swallowed-but-explained internal detail (per §3).
 
 ## 5. Adding a field
 
 Before adding a NEW field key:
 
-1. Check the table in §2 — if an existing key fits, use it.
+1. Check the table in §2. If an existing key fits, use it.
 2. If it is genuinely new, add a row to §2 in the same change, with
    its type and meaning. An undocumented field key is a future drift
    source.

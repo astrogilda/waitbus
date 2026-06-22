@@ -45,7 +45,7 @@ Pydantic AI + LangGraph frameworks the agents use):
 uv run --group agent-recipes python -m examples.hero_swarm
 ```
 
-(Use `uv run` / the project venv, not a bare `python` — the demo imports
+(Use `uv run` / the project venv, not a bare `python`: the demo imports
 `waitbus` and the two agent frameworks, none of which a system Python has.)
 
 You will see: the broadcast daemon bind, the honesty banner (with PIDs), the

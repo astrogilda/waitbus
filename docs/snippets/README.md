@@ -20,7 +20,7 @@ introduces it. A sibling `waitbus-examples` repo would invite drift.
 
 The snippets cover **both directions** of the local wire surface:
 subscribe (the read-side broadcast protocol) and emit
-(`minimal_emitter.py` — a named-column `INSERT OR IGNORE` into the
+(`minimal_emitter.py`, a named-column `INSERT OR IGNORE` into the
 events store followed by a best-effort doorbell ring; this is the
 supported external emit path). Listener and daemon implementations stay
 in-tree only; this directory remains the sole sanctioned external
@@ -61,12 +61,12 @@ Documented in `waitbus/_frame.py`. In short:
    a `subscribe_rejected` frame on version or token error.
 3. Read length-prefixed frames in a loop. Dispatch on the string field
    `kind`:
-   - `"event"` — a real event frame; fields are `event_id` (ULID),
+   - `"event"`: a real event frame; fields are `event_id` (ULID),
      `event_type`, `owner`, `repo`, `received_at`, `delivery_id`,
      `summary`, `fields`.
-   - `"truncated"` — the event exceeded the wire cap (`max_frame_bytes`);
+   - `"truncated"`: the event exceeded the wire cap (`max_frame_bytes`);
      re-fetch the full payload by `event_id` via the SQL/CLI surface.
-   - `"daemon_heartbeat"`, `"subscribe_ack"`, `"subscribe_rejected"` —
+   - `"daemon_heartbeat"`, `"subscribe_ack"`, `"subscribe_rejected"`:
      control frames.
 
    The minimal rule: **skip any frame whose `kind` is not `"event"`**

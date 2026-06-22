@@ -131,7 +131,7 @@ open `event_type` value-space; they do NOT define new wire frame `kind`
 values. The five wire kinds (`event`, `truncated`, `daemon_heartbeat`,
 `subscribe_ack`, `subscribe_rejected`) are owned by the daemon and frozen
 by the v1 wire protocol. If you have a use case that seems to need a custom
-control frame, open an issue — a `waitbus.control_frames.v1` extension point
+control frame, open an issue. A `waitbus.control_frames.v1` extension point
 is gated on real demand.
 
 ### 3. Publish with PEP 740 attestations
@@ -193,7 +193,7 @@ Two TOML files under `$XDG_CONFIG_HOME/waitbus/` (typically
 `~/.config/waitbus/` on Linux, `~/Library/Application Support/waitbus/`
 on macOS) control plugin loading.
 
-### `config.toml` — declared policy
+### `config.toml`: declared policy
 
 ```toml
 [plugins]
@@ -216,7 +216,7 @@ Two environment-variable overrides exist for emergency use:
 Persistent policy belongs in `config.toml`; env vars are for
 per-invocation overrides.
 
-### `plugins.allowlist.toml` — runtime-learned publisher bindings
+### `plugins.allowlist.toml`: runtime-learned publisher bindings
 
 ```toml
 [[source]]

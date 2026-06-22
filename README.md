@@ -1,16 +1,18 @@
 <!-- mcp-name: io.github.astrogilda/waitbus -->
 
-# waitbus — the workstation-local, cross-harness status bus: D-Bus for agents, with a replay log and a wait primitive
+# waitbus: the workstation-local, cross-harness status bus. D-Bus for agents, with a replay log and a wait primitive
 
 [![CI](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml/badge.svg)](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/astrogilda/waitbus)
+[![Context7](https://img.shields.io/badge/Context7-indexed-3b82f6)](https://context7.com/astrogilda/waitbus)
 
-**One `wait` verb that blocks on, and queries across, every local source at once. When any agent, CI job, test, or container on your machine finishes or fails, every other tool on the box hears it: your Claude Code, your Cursor, your scripts, your CI. Clients that support server notifications get a push; the rest get one blocking `waitbus wait`. No waitbus cloud, no account, no telemetry — all processing stays on your machine.**
+**One `wait` verb that blocks on, and queries across, every local source at once. When any agent, CI job, test, or container on your machine finishes or fails, every other tool on the box hears it: your Claude Code, your Cursor, your scripts, your CI. Clients that support server notifications get a push; the rest get one blocking `waitbus wait`. No waitbus cloud, no account, no telemetry; all processing stays on your machine.**
 
-Below: a **Pydantic AI** agent and a **LangGraph** agent — two *different* frameworks, two separate OS processes — both wait on one local waitbus bus. One fails; the peer on the *other* framework, plus a live `waitbus top` view, react to the single failure broadcast.
+Below: a **Pydantic AI** agent and a **LangGraph** agent, two *different* frameworks running as two separate OS processes, both wait on one local waitbus bus. One fails; the peer on the *other* framework, plus a live `waitbus top` view, react to the single failure broadcast.
 
-![waitbus cross-harness demo — two different agent frameworks on one local bus; one agent fails and the peer reacts](docs/demo/.waitbus-demo/hero.gif)
+![waitbus cross-harness demo: two different agent frameworks on one local bus; one agent fails and the peer reacts](docs/demo/.waitbus-demo/hero.gif)
 
 <sub>Real frameworks and real waitbus subscribe/emit; the agents' LLMs are deterministic fakes and the failure is an injected event, so the clip runs fully offline. Reproduce with <code>make hero</code>; higher-quality MP4 at <a href="docs/demo/.waitbus-demo/hero.mp4"><code>hero.mp4</code></a>. For a gentler start, see the single-agent <code>waitbus demo</code> in <a href="#try-it-in-60-seconds">Try it in 60 seconds</a>.</sub>
 
@@ -59,24 +61,24 @@ length-prefix framing. Runs on Linux (systemd-user) and macOS (launchd).
 
 **This is for you if…**
 
-- **You run a heterogeneous agent fleet** — Claude Code *and* Cursor *and*
-  background scripts — on one workstation and want them to hear each other's
+- **You run a heterogeneous agent fleet** (Claude Code *and* Cursor *and*
+  background scripts) on one workstation and want them to hear each other's
   finishes and failures.
-- **You wait across sources** — "block until the tests pass *and* the build is
+- **You wait across sources.** "Block until the tests pass *and* the build is
   done *and* CI is green," in one predicate, in a script
   (`waitbus wait --all-of ...`). Nothing else expresses this.
 - **You want zero-LLM-token, zero-poll waiting** as a daily habit across many local
   things, and you'll run a daemon to get it.
-- **You care that the daemon on your box is trustworthy** — reproducible
+- **You care that the daemon on your box is trustworthy:** reproducible
   builds, offline, no cloud, no account, no telemetry.
 
 **This is NOT for you if…**
 
-- **You wait on one GitHub repo's CI and nothing else.** Use `gh run watch` —
-  it's zero-setup, and for that single job we don't beat it by enough to
+- **You wait on one GitHub repo's CI and nothing else.** Use `gh run watch`.
+  It's zero-setup, and for that single job we don't beat it by enough to
   justify a daemon.
-- **You only need to react to a file change.** Use `inotifywait`/`entr` —
-  they're far faster on raw filesystem latency (our own benchmark says so) and
+- **You only need to react to a file change.** Use `inotifywait`/`entr`.
+  They're far faster on raw filesystem latency (our own benchmark says so) and
   need no daemon.
 - **You want cloud, cross-machine, or team coordination.** Out of scope for
   the local core by design.
@@ -95,16 +97,16 @@ uvx waitbus demo          # one command, no install needed
 
 
 `waitbus demo` allocates a temporary state directory and boots the
-broadcast daemon, then runs two phases. **Phase 1 — the point:** an
+broadcast daemon, then runs two phases. **Phase 1, the point:** an
 agent blocks on `waitbus wait` (the same egress engine the real command
 uses) with zero polling and idle CPU; the moment a github
 `workflow_run` event lands, the wait returns and the demo prints the
-real measured event-to-unblock latency. **Phase 2 — breadth:** the same
-primitive delivers every source — `pytest_session`, `docker_container`,
+real measured event-to-unblock latency. **Phase 2, breadth:** the same
+primitive delivers every source. `pytest_session`, `docker_container`,
 and `fs_change` events fan out to a live subscriber. Nothing on your
 machine outside the temporary directory is touched.
 
-![waitbus single-agent demo — a blocking wait returns the moment a GitHub Actions workflow_run event lands, then prints the measured event-to-unblock latency](docs/demo/.waitbus-demo/demo.gif)
+![waitbus single-agent demo: a blocking wait returns the moment a GitHub Actions workflow_run event lands, then prints the measured event-to-unblock latency](docs/demo/.waitbus-demo/demo.gif)
 
 A recorded MP4 + GIF walkthrough lives at
 `docs/demo/.waitbus-demo/demo.mp4` and `demo.gif`
@@ -115,7 +117,7 @@ via `make demo` from that directory (requires
 to render against an older binary that could silently change tape
 semantics.
 
-> The four events the demo emits are synthesized in-process — there
+> The four events the demo emits are synthesized in-process. There
 > is no real HTTP listener, no real pytest run, no real Docker
 > daemon, no real watchdog. A banner before each emit makes this
 > explicit, mirroring the `waitbus stats` output. To wire
@@ -202,7 +204,7 @@ flowchart TB
 Two ingress classes land events in the same store: **remote** webhooks (GitHub,
 Alertmanager) arrive over HTTPS and pass through `waitbus listener serve`, while
 **in-process** sources (pytest, docker, fs, plugins, and any agent) call the
-public `emit()` API to write the row directly — no listener, no network hop.
+public `emit()` API to write the row directly, with no listener and no network hop.
 An ETag polling fallback runs on a 45-second timer for repos you cannot receive
 webhooks for (upstreams, forks). Every path writes through the same
 `INSERT OR IGNORE`, so redeliveries are idempotent, and every row rings the
@@ -325,7 +327,7 @@ loader), `prometheus_client` (metrics), `stamina` (retry policy), and
 the `mcp` SDK (MCP server). The two consumer-facing extras
 (`waitbus[analyze]`, `waitbus[fs]`) pull `duckdb` / `watchdog` lazily and
 are the only optional packages. All other internal modules are pure
-stdlib — no network at import time, no C extensions, safe to import
+stdlib: no network at import time, no C extensions, safe to import
 in any Python 3.11+ environment. The package root logger uses
 `NullHandler` so library consumers never see leaked log records.
 
@@ -333,28 +335,28 @@ in any Python 3.11+ environment. The package root logger uses
 
 `waitbus mcp serve` is a stdio MCP server (JSON-RPC 2.0 over the spec at
 https://modelcontextprotocol.io/specification). What a given client can do with it
-depends on which MCP features that client implements — so here is the actual
+depends on which MCP features that client implements, so here is the actual
 capability split:
 
-- **Pull — any MCP client that supports Tools.** Call waitbus tools to query
+- **Pull, for any MCP client that supports Tools.** Call waitbus tools to query
   status and to block-wait for events; `tail_events` is a bounded long-poll, so
   even waiting needs no polling loop. This is the broadly portable path.
-- **Push — clients that support resource subscription.** waitbus emits the
+- **Push, for clients that support resource subscription.** waitbus emits the
   spec-standard `notifications/resources/updated` for `waitbus://repo/...`
   subscribers. Whether your client *surfaces* that push (rather than only
   calling tools) depends on the client; most coding-agent MCP clients today are
-  pull-only — the published client matrices track Tools / Resources / Prompts,
+  pull-only, and the published client matrices track Tools / Resources / Prompts,
   not a notification-surfacing column.
-- **Inline render — Claude Code.** waitbus also emits an Anthropic-private
+- **Inline render, for Claude Code.** waitbus also emits an Anthropic-private
   `notifications/claude/channel` that Claude Code renders inline; other clients
   ignore the unknown method harmlessly per JSON-RPC 2.0.
 
-**Verified with** — an executable test exercises the path end-to-end, not just
+**Verified with:** an executable test exercises the path end-to-end, not just
 "speaks the spec": **Claude Code** (the MCP emit path, `tests/test_mcp_e2e.py`);
 and, via the public Python SDK (`waitbus.wait_for` / `subscribe`), a
 **Pydantic AI** and a **LangGraph** agent (`tests/test_agent_integration_*.py`);
 plus the language snippets and the bash `waitbus wait` wrapper. Any other
-stdio-MCP client can use the pull path above — that is config, not a tested
+stdio-MCP client can use the pull path above, but that is config, not a tested
 end-to-end guarantee.
 
 The command is always `uvx --from waitbus waitbus mcp serve`; only WHERE each client
@@ -379,7 +381,7 @@ current MCP docs:
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows) |
 | Cursor | `~/.cursor/mcp.json` (or `.cursor/mcp.json` per project) |
 | Cline (VS Code) | `~/.config/Cline/cline_mcp_settings.json` (Linux), or per-workspace `.vscode/cline_mcp_settings.json` |
-| Codex CLI (OpenAI) | `~/.codex/config.toml` (under a `[mcp_servers.waitbus]` table — Codex uses TOML, not JSON) |
+| Codex CLI (OpenAI) | `~/.codex/config.toml` (under a `[mcp_servers.waitbus]` table; Codex uses TOML, not JSON) |
 | Gemini CLI (Google) | `~/.gemini/settings.json` (under the `mcpServers` key) |
 | Continue | `~/.continue/config.json` (under the `mcpServers` key) |
 
@@ -425,7 +427,7 @@ waitbus pr-monitor tick --pr 7 --pr 9
 
 - **Sub-second `workflow_job` failure detection.** Catches matrix-cell failures within sub-second of GitHub
   delivering the webhook (wall-clock from webhook receipt, not from the
-  CI failure itself) — no waiting for the parent
+  CI failure itself), with no waiting for the parent
   `workflow_run.completed` to arrive. Individual job failures surface
   immediately even when other matrix cells are still running.
 
@@ -435,7 +437,7 @@ waitbus pr-monitor tick --pr 7 --pr 9
   a dedup queue.
 
 - **AF_UNIX `SOCK_STREAM` broadcast bus with length-prefix framing.** Each
-  wire frame is a 4-byte big-endian length followed by the JSON payload —
+  wire frame is a 4-byte big-endian length followed by the JSON payload,
   portable across Linux and macOS (where `SOCK_SEQPACKET` is unavailable).
   Non-blocking sockets with per-subscriber lag counters; slow subscribers
   are closed after `LAG_LIMIT` consecutive drops and reconnect via
@@ -497,8 +499,8 @@ first-hit-wins precedence as the rest of the config chain:
 
 The shipped systemd units use `StateDirectory=waitbus` and
 `RuntimeDirectory=waitbus`, so on Linux systemd creates the
-directories with 0700 ownership before the daemons start — no
-operator mkdir required.
+directories with 0700 ownership before the daemons start, so no
+operator mkdir is required.
 
 **Secrets** (staged via `waitbus install-credentials <name>`):
 
@@ -513,7 +515,7 @@ Secrets are stored in a single `0600`-mode `secrets.json` under the user
 state directory (`<state_dir>/secrets.json`); `install-credentials` reads the
 value from `--file` or stdin and merges it in with an atomic replace, never
 exposing it on the command line. At-rest protection of the file is delegated
-to the host's full-disk encryption (FileVault / LUKS) — see
+to the host's full-disk encryption (FileVault / LUKS); see
 [SECURITY.md](SECURITY.md). `waitbus doctor` reports whether each required
 key is present without printing its value, and exits 1 if a piece needed by
 an enabled unit is missing.
@@ -530,7 +532,7 @@ confidentiality: any process running as your user can read every event on the
 bus and can emit events under any sender name. waitbus is a single-user
 workstation tool, not a security boundary between processes you run. Peer
 authentication is by kernel-verified UID (`SO_PEERCRED`), so a *different* user
-cannot connect — but same-user isolation is out of scope by design.
+cannot connect, but same-user isolation is out of scope by design.
 
 To verify the release artifacts:
 
@@ -547,7 +549,7 @@ provenance verification procedure including SLSA, PEP 740, and SBOM checks.
 ## Support
 
 For bug reports, feature requests, and questions, see
-[SUPPORT.md](SUPPORT.md) — it lists the security, abuse/conduct, and
+[SUPPORT.md](SUPPORT.md); it lists the security, abuse/conduct, and
 general channels and sets single-maintainer, best-effort
 expectations. Security vulnerabilities go through the private process in
 [SECURITY.md](SECURITY.md), never a public issue.
@@ -605,7 +607,7 @@ interactive session is open:
    interactive session ends.
 
 2. **No keyring unlock required.** Secrets live in a `0600` `secrets.json`
-   under the user state directory — read with a plain file read, no keyring,
+   under the user state directory, read with a plain file read, no keyring,
    no D-Bus session requirement, and no `pam_gnome_keyring.so` dependency, so
    the daemon stack runs unmodified on a fully headless box.
 
@@ -676,13 +678,13 @@ for the `loginctl enable-linger` requirement.
 | Peer-credential UID check | `SO_PEERCRED` | `getpeereid()` via ctypes | LOCAL_PEERPID deliberately not used (see SECURITY.md) |
 | Install entry | `waitbus install-systemd` | `waitbus install-launchd` | Each refuses to run on the other platform |
 | Process supervisor | systemd-user units | launchd LaunchAgents | 8 systemd units, 4 launchd plists, all driven via `waitbus` |
-| MCP server | Yes | Yes | stdio MCP — runs in any spec-compliant client |
+| MCP server | Yes | Yes | stdio MCP, runs in any spec-compliant client |
 | Claude Code plugin | Yes | Yes | Plugin manifest in `.claude-plugin/` |
 
 Both platforms run the full daemon stack. Linux uses systemd-user units
 with socket activation; macOS uses launchd LaunchAgents with manual
 socket bind. The peer-credential UID check, doorbell primitive, and
-install entry-point each dispatch inline at the leaf call site — there
+install entry-point each dispatch inline at the leaf call site; there
 is no `IPCBackend`-style abstraction layer, since those three leaf
 sites are the only platform-divergent code.
 Details in [SECURITY.md](SECURITY.md).
@@ -696,7 +698,7 @@ WSL2 distribution works exactly as it does on native Linux. See
 
 **Zero default egress, no telemetry.** The broadcast daemon, every
 subscriber (`waitbus wait`, `waitbus read-events`, `waitbus mcp serve`), and
-the `emit()` path make no outbound network calls — nothing is phoned
+the `emit()` path make no outbound network calls; nothing is phoned
 home. The only network surface is the **optional** inbound GitHub webhook
 listener (loopback `127.0.0.1:9000`, HMAC-verified), plus local OS keyring
 access for credential storage. Outbound traffic happens only when you
@@ -719,10 +721,10 @@ waitbus is released under the MIT License. See [LICENSE](LICENSE) for the full t
 
 ## More
 
-- [CHANGELOG.md](CHANGELOG.md) — version history and migration notes
-- [SECURITY.md](SECURITY.md) — HMAC threat model, platform assumptions, reporting process
-- [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) — per-surface dev guide, loading the plugin locally
-- [docs/emitters/recipes.md](docs/emitters/recipes.md) — shell and docker emit recipes, plus the CloudEvents envelope mapping for external producers
-- [docs/emitters/claude-code-hook.md](docs/emitters/claude-code-hook.md) — emit a bus event on Claude Code session lifecycle hooks
+- [CHANGELOG.md](CHANGELOG.md): version history and migration notes
+- [SECURITY.md](SECURITY.md): HMAC threat model, platform assumptions, reporting process
+- [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md): per-surface dev guide, loading the plugin locally
+- [docs/emitters/recipes.md](docs/emitters/recipes.md): shell and docker emit recipes, plus the CloudEvents envelope mapping for external producers
+- [docs/emitters/claude-code-hook.md](docs/emitters/claude-code-hook.md): emit a bus event on Claude Code session lifecycle hooks
 
 

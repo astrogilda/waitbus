@@ -52,23 +52,23 @@ And the operator-facing umbrella CLI:
                               verify-plugin    validate .claude-plugin/plugin.json
 ```
 
-### `waitbus listener serve` — webhook ingress
+### `waitbus listener serve`: webhook ingress
 
 Pure-stdlib HTTP server binding `127.0.0.1:9000`. Threading via the
 standard library `ThreadingHTTPServer` for concurrent webhook
 deliveries; one thread per request, no thread pool. Routes:
 
-- `POST /webhook` — GitHub workflow events. HMAC-SHA256 over the
+- `POST /webhook`: GitHub workflow events. HMAC-SHA256 over the
   raw body using the `github-webhook-secret` secret (read from the 0600
   `secrets.json` via `_secrets.get_secret`), lifted via
   `X-Hub-Signature-256`. Workflow_run and workflow_job event
   types are stored; everything else returns 200 ignored.
-- `POST /alertmanager` — Prometheus alerts. HMAC over the body
+- `POST /alertmanager`: Prometheus alerts. HMAC over the body
   using the `alertmanager-hmac` credential, same delivery mechanism.
-- `POST /watchdog` — same HMAC contract as /alertmanager; distinct
+- `POST /watchdog`: same HMAC contract as /alertmanager; distinct
   event_type so the absence detector can query for it independently.
-- `GET /healthz` — JSON liveness probe.
-- `GET /metrics` — Prometheus text-format counters.
+- `GET /healthz`: JSON liveness probe.
+- `GET /metrics`: Prometheus text-format counters.
 
 On commit, the listener writes one byte to the doorbell socket
 to wake the broadcast daemon. The write is fire-and-forget (the
@@ -78,7 +78,7 @@ Linux + macOS supported. Both the listener and the SQLite
 backend are pure stdlib so the surface works identically on either
 OS.
 
-### `waitbus broadcast serve` — fan-out hub
+### `waitbus broadcast serve`: fan-out hub
 
 Asyncio-driven AF_UNIX SOCK_STREAM daemon (4-byte length-prefix framing;
 see the Wire protocol section below). Owns three sockets:
@@ -96,7 +96,7 @@ see the Wire protocol section below). Owns three sockets:
 The fan-out loop:
 
 1. Seed `cursor = MAX(seq)` on startup (`seq` is a daemon-assigned
-   `INTEGER PRIMARY KEY AUTOINCREMENT` — monotonic in commit order,
+   `INTEGER PRIMARY KEY AUTOINCREMENT`, monotonic in commit order,
    so concurrent inserts cannot be skipped).
 2. On every doorbell ping (or batch of pings, coalesced via FIFO
    drain), `SELECT * FROM events WHERE seq > :cursor ORDER BY
@@ -128,7 +128,7 @@ peer-credential UID check dispatches at module-import time:
 `SO_PEERCRED` on Linux, `getpeereid()` via ctypes on macOS (see
 `waitbus/_peercred.py`).
 
-### `waitbus etag-poll run` — fallback ingress
+### `waitbus etag-poll run`: fallback ingress
 
 systemd-timer-driven, one-shot. Walks
 `~/.local/state/waitbus/watched_repos.txt`, conditionally GETs
@@ -147,7 +147,7 @@ threshold. For each such job, the poller inserts one synthetic
 `status=stalled` row keyed by `etag:stall:{job_id}` so the broadcast bus
 delivers a "this job is wedged" signal to every subscriber. The
 `INSERT OR IGNORE` contract means each stall is reported exactly once per
-job — later polling cycles encounter the same key and produce no-ops.
+job; later polling cycles encounter the same key and produce no-ops.
 
 **Threshold knob:** Set `WAITBUS_STALL_THRESHOLD_MIN` (integer, minutes) to
 override the default of `60`. A job that has been in `in_progress` or `queued`
@@ -155,7 +155,7 @@ state for longer than this value triggers a synthetic stall event. Setting the
 variable to a lower value makes stall detection more aggressive; raising it
 reduces false positives on legitimately long-running matrix jobs.
 
-### `waitbus read-events` and `waitbus pr-monitor` — sample consumers
+### `waitbus read-events` and `waitbus pr-monitor`: sample consumers
 
 Both subscribe to the broadcast bus with the same wire protocol.
 They serve as reference implementations of the consumer surface:
@@ -181,7 +181,7 @@ opt into persistent resume without operator-managed ULID tracking.
 1. The subscriber calls `open_subscriber(bookmark_id="my-name", ...)`.
 2. `open_subscriber` loads the cursor from
    `cursors_dir() / "bookmark-my-name.txt"` (returning `None` if the
-   file is absent — first run starts at the daemon's live tail).
+   file is absent; first run starts at the daemon's live tail).
 3. If a cursor is found and no explicit `since=` was supplied, it is
    injected into the subscribe envelope as `since=<stored_ulid>`.
 4. After each non-heartbeat frame the caller invokes
@@ -210,7 +210,7 @@ scheme under the same `cursors_dir()` directory; both cursor families are
 co-located but have distinct filename prefixes (`{owner}_{repo}.ulid` vs
 `bookmark-{name}.txt`) so they never collide.
 
-### `waitbus events query` — direct SQL passthrough
+### `waitbus events query`: direct SQL passthrough
 
 A read-only escape hatch for ad-hoc queries the prefab consumers
 (`read-events`, `pr-monitor`, `mcp serve`) do not cover. The operator
@@ -241,17 +241,17 @@ typos before they reach the DB; the read-only connection is the
 load-bearing safety property. See [`../SECURITY.md`](../SECURITY.md)
 for the full discussion.
 
-### `waitbus mcp serve` — MCP client bridge
+### `waitbus mcp serve`: MCP client bridge
 
 AF_UNIX subscriber that re-emits broadcast frames as MCP
 notifications. Driven by the official `mcp` Python SDK at v1.27.1
 exact (pinned in `pyproject.toml`), using the low-level
 `mcp.server.lowlevel.Server` interface. Two methods per frame:
 
-- `notifications/resources/updated` — public MCP spec, consumed by
+- `notifications/resources/updated`: public MCP spec, consumed by
   Claude Desktop and any spec-compliant generic client. Emitted via
   the SDK's typed `ServerSession.send_resource_updated` helper.
-- `notifications/claude/channel` — Claude Code vendor-specific extension,
+- `notifications/claude/channel`: Claude Code vendor-specific extension,
   consumed by Claude Code's experimental channel-capability
   surface. The method name is NOT part of the public MCP spec.
   Emitted by constructing
@@ -271,7 +271,7 @@ any host where the broadcast daemon is unreachable, the daemon
 logs one info-level message and exits cleanly so MCP clients
 treat the integration as unavailable rather than failed.
 
-### `waitbus watchdog-check run` — absence detector
+### `waitbus watchdog-check run`: absence detector
 
 systemd-timer-driven, one-shot. Reads the most recent
 `prometheus_watchdog` row's `received_at` and toggles a flag
@@ -287,63 +287,63 @@ once per prompt rather than re-running a SQLite query on every
 prompt render. Indicator implementations are out of scope for the
 package itself; the flag-file contract is the consumer surface.
 
-### `waitbus` — operator-facing CLI
+### `waitbus`: operator-facing CLI
 
 Typer-based umbrella. All daemon entry points, plus operator
 subcommands:
 
-- `init` — bootstrap state dirs, run schema migration via
+- `init`: bootstrap state dirs, run schema migration via
   `_db.ensure_schema`, scaffold `watched_repos.txt` and
   `etag_state.json`, transparently migrate any event store found at a
   legacy default location onto the platformdirs target if one
   exists.
-- `install-systemd` — copy `share/systemd/user/` units from the
+- `install-systemd`: copy `share/systemd/user/` units from the
   wheel install prefix to `~/.config/systemd/user/`. Required for
   `uv tool install` / `pipx install` (their isolated tool prefixes
   are not on systemd's load path). Idempotent; `--sync` removes
   orphans for the downgrade case; `--dry-run` previews actions
   without modifying anything and exits 0.
-- `install-launchd` — macOS equivalent of `install-systemd`.
-- `install-credentials` — operator command that reads a secret from
+- `install-launchd`: macOS equivalent of `install-systemd`.
+- `install-credentials`: operator command that reads a secret from
   `--file` or stdin and merges it (key = credential name) into the 0600
   `secrets.json` under the state dir, writing atomically
   (`secrets.json.tmp` chmod-0600-then-`os.replace`). Staging
   `github-webhook-secret` also enables the opt-in webhook listener. At-rest
   protection is delegated to host full-disk encryption + UNIX DAC; the
   daemon reads the value via `_secrets.get_secret`.
-- `doctor` — health check (config, paths, binaries, secrets file,
+- `doctor`: health check (config, paths, binaries, secrets file,
   systemd/launchd-unit presence, metrics endpoint). Exits 0 when every
   section reports clean; exits 1 on any issue so the command is usable
   in pre-commit hooks, shell-prompt indicators, and post-restart
   health probes.
-- `status` — operational dashboard: event counts, last event
+- `status`: operational dashboard with event counts, last event
   timestamp, daemon liveness state per platform.
-- `verify-plugin` — validate `.claude-plugin/plugin.json` fields
+- `verify-plugin`: validate `.claude-plugin/plugin.json` fields
   (`name`, `version`, `schemaVersion`). Uses `CLAUDE_PLUGIN_ROOT`
   env var to locate the plugin directory. Unrelated to
-  `source verify` below — `verify-plugin` validates a Claude plugin
+  `source verify` below. `verify-plugin` validates a Claude plugin
   manifest; `source verify` validates a waitbus source plugin's PEP 740
   attestation.
-- `source list / show / verify` — inspect the live source registry
+- `source list / show / verify`: inspect the live source registry
   (built-in sources plus any plugins discovered via the
   `waitbus.sources.v1` entry-point group). `source verify` wraps
   `pypi_attestations.Attestation.verify` in-process against a
   plugin's installed wheel. See `docs/CUSTOM_SOURCES.md`.
-- `allowlist list / add / remove / verify` — manage publisher-bound
+- `allowlist list / add / remove / verify`: manage publisher-bound
   TOFU pins (`~/.config/waitbus/plugins.allowlist.toml`). The pin file
   is updated automatically on first-install of an attested plugin;
   these verbs let the operator audit, manually add, or drop pins.
-- `config validate [PATH]` / `config schema` — pre-flight config
+- `config validate [PATH]` / `config schema`: pre-flight config
   validation and schema emission; see the next section.
 
-### `waitbus config` — pre-flight validation and schema emission
+### `waitbus config`: pre-flight validation and schema emission
 
 The daemon validates `config.toml` on startup and loud-fails on any
 error, but that surfaces problems
-late — after the operator has already pointed a unit at the bad file.
+late, after the operator has already pointed a unit at the bad file.
 The `config` sub-app moves the same checks earlier:
 
-- `config validate [PATH]` — loads `PATH` (or the platformdirs
+- `config validate [PATH]`: loads `PATH` (or the platformdirs
   default at `~/.config/waitbus/config.toml`), runs the file
   through `tomllib` and the `WaitbusConfig` pydantic-settings model,
   and reports the result. Exit 0 on success, 2 on any failure (file
@@ -352,7 +352,7 @@ The `config` sub-app moves the same checks earlier:
   `--json` switches to a structured JSON array consumable by editor
   plugins and CI lint hooks. `--quiet` suppresses the success line on
   stdout for scripts that only care about the exit code.
-- `config schema` — emits the canonical config schema. `--format=json`
+- `config schema`: emits the canonical config schema. `--format=json`
   (default) prints a JSON Schema document (pydantic v2
   `model_json_schema()` output, augmented with a stable `$id` and an
   operator-facing `title`). `--format=toml-example` prints a commented
@@ -429,7 +429,7 @@ The ETag-poll path lands at the same `insert_event` call from
 the doorbell rings the same way; downstream consumers cannot
 distinguish a webhook-sourced row from a poll-sourced row
 except via the `ingest_method` column. That symmetry is
-deliberate — every consumer surface treats both ingest paths
+deliberate: every consumer surface treats both ingest paths
 as equivalent event sources.
 
 ---
@@ -444,10 +444,10 @@ consumers read against (`waitbus/_frame.py::read_frame` /
 `read_frame_sock`). This is wire protocol **v1**, frozen; it ships frozen at
 v0.1.0, the first public release.
 
-> The frozen, normative consumer contract — every frame field, the
+> The frozen, normative consumer contract (every frame field, the
 > `proto` negotiation, the `subscribe_ack` / `subscribe_rejected`
-> handshake, and the replay-vs-live `caught_up_at` cursor — lives in
-> [`docs/CONSUMER_API.md`](CONSUMER_API.md) (§1–§3). That document is
+> handshake, and the replay-vs-live `caught_up_at` cursor) lives in
+> [`docs/CONSUMER_API.md`](CONSUMER_API.md) (sections 1 to 3). That document is
 > the single source of truth for anyone implementing a subscriber; the
 > summary below orients a reader of this architecture doc and defers to
 > it on any discrepancy.
@@ -495,7 +495,7 @@ check (`SO_PEERCRED` / `getpeereid`) is the entire ingress boundary.
 
 Every daemon-sent frame carries an open string `kind` discriminator. A
 consumer reads `kind` first and routes data-vs-control on it. The set
-is **not** a closed/exhaustive union — a future `kind` can be added
+is **not** a closed/exhaustive union: a future `kind` can be added
 additively, and the four hand-decoding language snippets ignore frames
 whose `kind` they do not recognise rather than break.
 
@@ -541,7 +541,7 @@ Notes:
   specific dispatch lives inline at three leaf sites: `_paths.py`
   (macOS socket branch), `_doorbell.py` (eventfd vs SOCK_STREAM ping),
   and `_peercred.py` (`SO_PEERCRED` vs `getpeereid()`). No
-  `IPCBackend`-style abstraction layer — the three leaf sites are
+  `IPCBackend`-style abstraction layer; the three leaf sites are
   the only platform-divergent code, so an abstraction layer would
   add indirection without reducing the divergent surface.
 
@@ -575,7 +575,7 @@ Two independently-scoped mechanisms, each loaded once at daemon startup
   UID and rejects peers whose UID differs from `os.getuid()`. Linux
   uses `SO_PEERCRED`; macOS uses `getpeereid()` via ctypes (see
   `waitbus/_peercred.py`). `LOCAL_PEERPID` is deliberately not
-  used — see SECURITY.md for the CVE rationale.
+  used; see SECURITY.md for the CVE rationale.
 - This kernel-attested same-UID check is the entire broadcast ingress
   boundary. There is no application-level subscribe token: any process
   that can reach the socket is already proven same-UID, so a bearer
@@ -591,7 +591,7 @@ alertmanager-hmac       listener  optional
 ```
 
 Staging via `waitbus install-credentials <name>` (reads the plaintext
-from `--file` or stdin — never `--value`, which would leak to shell
+from `--file` or stdin, never `--value`, which would leak to shell
 history) merges it (key = `<name>`) into the 0600 `secrets.json` under
 the state dir, written atomically (`secrets.json.tmp` chmod-0600 then
 `os.replace`). Staging `github-webhook-secret` also enables the opt-in
@@ -620,12 +620,12 @@ channel capability (Claude Code with the flag enabled) simultaneously.
 
 Emission per event:
 
-- `notifications/resources/updated` — public MCP method. Consumed
+- `notifications/resources/updated`: public MCP method. Consumed
   by Claude Desktop and any spec-compliant generic client. The
   resource URI references the waitbus event by ULID;
   consumers fetch the full event via the standard `resources/read`
   flow.
-- `notifications/claude/channel` — Claude Code vendor-specific extension
+- `notifications/claude/channel`: Claude Code vendor-specific extension
   method. Consumed by Claude Code's experimental
   channel-capability surface. Carries a richer payload
   (per-event-type routing hints, summary string inline) and a
@@ -633,7 +633,7 @@ Emission per event:
 
 The method-name caveat: `notifications/claude/channel` is NOT
 part of the public MCP spec. The dual emission is exactly the
-mitigation — if Anthropic renames or removes the method, the
+mitigation: if Anthropic renames or removes the method, the
 public-spec path keeps serving every other client. Operators
 deploying against Claude Code see the faster path; operators
 deploying against Claude Desktop or a generic client see the
@@ -664,7 +664,7 @@ which emits:
 ```
 
 The constant's docstring carries a two-line shell recipe for comparing
-this tuple against the SDK's own list — drift detection without a live
+this tuple against the SDK's own list, giving drift detection without a live
 session.
 
 ---
@@ -717,8 +717,8 @@ counters, the `waitbus_broadcast_send_seconds` histogram,
 `waitbus_watermark_replay_events_total`, and the
 `waitbus_broadcast_events_{emitted,delivered}_total` pair.
 `waitbus_broadcast_events_delivered_total` counts EVENT frames only
-— control frames (heartbeat, subscribe_ack, subscribe_rejected) are
-never counted — at kernel-accept: a synchronous full send, or that
+(control frames such as heartbeat, subscribe_ack, and subscribe_rejected are
+never counted) at kernel-accept: a synchronous full send, or that
 frame's flush completion when it was queued, uniformly across
 fan-out, the pre-ack drain, and replay. Subscriber
 connect/disconnect events are additionally logged for
@@ -745,7 +745,7 @@ Configuration knobs on `WaitbusConfig`:
 
 The instrumentation is two-phase:
 
-**Phase 1 — explicit spans at daemon entry points.** Each daemon's
+**Phase 1, explicit spans at daemon entry points.** Each daemon's
 `main()` calls `setup_tracer_provider()` at startup and
 `shutdown_tracer_provider()` at exit (flushing the OTLP batch
 processor). Spans wrap the daemon's natural request / event boundary:
@@ -767,10 +767,10 @@ without adding actionable signal. The per-wake span instead carries
 stays bounded while the throughput remains visible.
 
 Stamina-driven HTTP retries inside `etag_poll._do_conditional_get`
-share a single span — one OTel span per logical API call, not one
+share a single span: one OTel span per logical API call, not one
 per HTTP round.
 
-**Phase 2 — stdlib auto-instrumentation.** `setup_tracer_provider()`
+**Phase 2, stdlib auto-instrumentation.** `setup_tracer_provider()`
 also enables `opentelemetry-instrumentation-sqlite3` and
 `opentelemetry-instrumentation-urllib` when those packages are
 importable (they ship in the `[otel]` extras group). Auto-instrumentation
@@ -789,7 +789,7 @@ JSON shape stays identical to the pre-OTel record.
 loads call `_otel.add_redacted_secret_attribute(span, key)` to
 pre-populate secret-bearing attribute keys with `"<redacted>"`. This
 defuses any future urllib / sqlite3 instrumentation that introspects
-callable arguments — the redacted sentinel reaches the SDK first, so
+callable arguments: the redacted sentinel reaches the SDK first, so
 the credential value cannot leak as a span attribute.
 
 The exporter is the OTLP HTTP/protobuf path (no gRPC) so the runtime
@@ -837,7 +837,7 @@ The events DB has two distinct startup paths:
    `BEGIN IMMEDIATE` retry loop absorbs the socket-activation race.
    `ensure_schema` also runs an in-place additive ADD-COLUMN pass for
    any column declared in `schema.sql` but missing from the live
-   table — that path remains for column-shape evolution that a
+   table; that path remains for column-shape evolution that a
    listener restart on a single workstation can absorb without a
    separate migrate step.
 
@@ -861,7 +861,7 @@ The events DB has two distinct startup paths:
    Tamper detection: the SHA-256 of every applied `.sql` file is
    recorded in `schema_migrations`. A post-apply edit makes the next
    `migrate` invocation refuse to run with a clear `checksum drift`
-   error — the operator must restore the original contents or roll
+   error; the operator must restore the original contents or roll
    the change forward in a new numbered file.
 
    Gap detection: the discovery pass requires every sequence number
@@ -885,8 +885,8 @@ The events DB has two distinct startup paths:
 The split is deliberate: `ensure_schema` is the daemon-startup
 fastpath (idempotent on every boot, no operator action required for
 additive column changes); `migrate` is the operator-driven evolution
-verb (anything beyond additive ADD COLUMN — index drops, table
-renames, data backfills — lands as a numbered file).
+verb (anything beyond additive ADD COLUMN, such as index drops, table
+renames, and data backfills, lands as a numbered file).
 
 ---
 
@@ -925,6 +925,6 @@ were considered and explicitly left out:
 
 ## Related Documents
 
-- [`CHANGELOG.md`](../CHANGELOG.md) — Release notes.
-- [`ROADMAP.md`](../ROADMAP.md) — Future work, externally gated.
-- [`SECURITY.md`](../SECURITY.md) — Threat model and security posture.
+- [`CHANGELOG.md`](../CHANGELOG.md): Release notes.
+- [`ROADMAP.md`](../ROADMAP.md): Future work, externally gated.
+- [`SECURITY.md`](../SECURITY.md): Threat model and security posture.

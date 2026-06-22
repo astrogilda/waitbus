@@ -211,8 +211,8 @@ capture is well under EUR 1.
 
 ## 7a. Reproduce the cross-harness proof yourself
 
-The headline cross-harness claim — N=5..10 heterogeneous agent
-frameworks subscribing, emitting, and reacting on one local bus — is
+The headline cross-harness claim (N=5..10 heterogeneous agent
+frameworks subscribing, emitting, and reacting on one local bus) is
 reproducible on your own machine with your own agent CLIs. `waitbus
 stress --real` spawns real `claude -p` and `gemini -p` driver
 subprocesses alongside the in-process Pydantic AI / LangGraph drivers
@@ -238,7 +238,7 @@ The run writes a `verdict.json` with, per window, `cross_broadcast_proven`
 (true iff every spawned driver reacted and all frameworks were observed),
 median/p99 reaction latency, and measured token usage per LLM driver. The
 `claude -p` / `gemini -p` calls are subscription-billed; `gpt-4o-mini` is
-metered but cheap. None of this is required for normal waitbus use — the
+metered but cheap. None of this is required for normal waitbus use: the
 core sources (pytest, docker, fs, GitHub), the MCP surface, and the
 subscribe SDK need no agent CLI.
 

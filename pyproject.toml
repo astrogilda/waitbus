@@ -307,6 +307,7 @@ ignore = [
   ".lycheeignore",
   "server.json",
   "pyrightconfig.json",
+  "context7.json",
   # Out-of-sdist top-level trees.
   ".claude-plugin/**",
   ".github/**",

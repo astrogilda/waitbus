@@ -1,6 +1,6 @@
 # waitbus documentation
 
-Reference documentation for [waitbus](../README.md) — the workstation-local,
+Reference documentation for [waitbus](../README.md), the workstation-local,
 cross-harness event bus. Start with the top-level [README](../README.md) for
 install and quick-start; the documents below go deeper.
 

@@ -21,7 +21,7 @@ declare API stability after a period of stable public use.
   reads only when there is something to read. Messages share the event store but
   stay out of the default `tail_events` and `waitbus://current` views; `tail_events`
   gains an `event_types` filter so a client can opt into them. Agent identities are
-  cooperative and self-asserted — the bus is single-user and same-UID, so this is
+  cooperative and self-asserted. The bus is single-user and same-UID, so this is
   not a security boundary.
 
 ## [0.1.4]
@@ -97,7 +97,7 @@ declare API stability after a period of stable public use.
   carried in the project README so `waitbus` can be discovered and installed
   through the Model Context Protocol registry. No code or API changes.
 
-## [0.1.0] — first public release
+## [0.1.0]: first public release
 
 waitbus is a workstation-local async event bus for your machine's agents:
 wait on anything from any source, and let your agents coordinate over the
@@ -105,20 +105,20 @@ same local bus. It is local-only (an `AF_UNIX` socket, no network egress),
 durable (events persist to SQLite with replay), and zero-polling (an
 `eventfd` doorbell wakes subscribers instead of a clock loop).
 
-### Sources — wait on what already finished or failed
+### Sources: wait on what already finished or failed
 
-- **CI jobs** — a GitHub workflow run finishing or failing.
-- **Test runs** — a pytest run passing or failing.
-- **Containers** — docker container lifecycle events.
-- **Filesystem** — file and directory changes.
+- **CI jobs**: a GitHub workflow run finishing or failing.
+- **Test runs**: a pytest run passing or failing.
+- **Containers**: docker container lifecycle events.
+- **Filesystem**: file and directory changes.
 - Third-party sources register through the `waitbus.sources.v1` entry-point group.
 
-### Subscribers — any agent or script can wait and react
+### Subscribers: any agent or script can wait and react
 
-- **Agent frameworks** — Pydantic AI and LangGraph agents subscribe and react over the public SDK.
-- **Claude Code** — receives pushes over the MCP notification channel.
-- **Any MCP client** — pulls events via tool calls or a `tail_events` long-poll.
-- **Scripts / CLI** — `waitbus wait`, plus hand-decoding subscriber snippets in Python, Go, Rust, and TypeScript.
+- **Agent frameworks**: Pydantic AI and LangGraph agents subscribe and react over the public SDK.
+- **Claude Code**: receives pushes over the MCP notification channel.
+- **Any MCP client**: pulls events via tool calls or a `tail_events` long-poll.
+- **Scripts / CLI**: `waitbus wait`, plus hand-decoding subscriber snippets in Python, Go, Rust, and TypeScript.
 
 ### Core
 
@@ -133,7 +133,7 @@ durable (events persist to SQLite with replay), and zero-polling (an
   carried on every data frame.
 - Backpressure with whole-frame delivery: a subscriber that falls behind is
   evicted with a `subscribe_rejected{lag_limit_exceeded}` frame when the wire
-  sits at a frame boundary, or a clean EOF otherwise — never a torn frame.
+  sits at a frame boundary, or a clean EOF otherwise, never a torn frame.
 - Opt-in loopback Prometheus `/metrics` on the broadcast daemon;
   `waitbus_broadcast_events_delivered_total` counts event frames only, at
   kernel-accept (control frames are never counted).

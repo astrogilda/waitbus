@@ -1,4 +1,4 @@
-# waitbus Consumer API — stable public contracts
+# waitbus Consumer API: stable public contracts
 
 This document specifies the wire-level and storage-level contracts a
 third-party consumer may depend on. Everything described here is a
@@ -24,7 +24,7 @@ length-prefix framed:
 [4 bytes big-endian uint32 length N] [N bytes UTF-8 JSON body]
 ```
 
-- Length prefix is `struct.Struct(">I")` — big-endian unsigned 32-bit
+- Length prefix is `struct.Struct(">I")`, big-endian unsigned 32-bit
   (`waitbus/_frame.py::_LENGTH_STRUCT`).
 - `0 < N <= 65536`. `MAX_FRAME_BYTES = 65_536` (64 KiB) is enforced
   producer-side in `waitbus/_frame.py::encode_frame`. A consumer MUST reject a length prefix of `0` or one greater
@@ -51,7 +51,7 @@ request:
 
 Field contracts (validators in `waitbus/broadcast.py`):
 
-- **`proto`** — wire-protocol version the subscriber speaks. A
+- **`proto`**: wire-protocol version the subscriber speaks. A
   connection-scoped integer negotiated once at subscribe time (NATS
   `INFO`/`CONNECT`, MCP `initialize`, RESP3 `HELLO` precedent), **not** a
   per-frame discriminator. The only supported value today is `1`. An
@@ -61,32 +61,32 @@ Field contracts (validators in `waitbus/broadcast.py`):
   fan-out frame carries a `specversion` tax. Omitting `proto` is treated
   as the implicit v1 contract for backward compatibility with subscribe
   frames produced before this field existed.
-- **`filters`** — list of match patterns. Each pattern is validated
+- **`filters`**: list of match patterns. Each pattern is validated
   against the anchored regex
   `^([A-Za-z0-9_.-]+/([A-Za-z0-9_.-]+|\*)|\*)$`
   (`waitbus/broadcast.py::FILTER_RE`). Three shapes are accepted:
-  - `owner/repo` — exact repository
-  - `owner/*` — every repository under an owner
-  - `*` — every event (global). Note this is a bare `*`, **not**
+  - `owner/repo`: exact repository
+  - `owner/*`: every repository under an owner
+  - `*`: every event (global). This is a bare `*`, **not**
     `*/*`.
   No shell-metacharacter surface; anything else is rejected.
-- **`event_types`** — optional list restricting delivery to those
+- **`event_types`**: optional list restricting delivery to those
   event types (`waitbus/broadcast.py::_validate_subscribe_event_types`).
   Omit for all supported types.
   The supported set covers the GitHub stream (`workflow_run`,
   `workflow_job`), the Prometheus/Alertmanager stream
   (`prometheus_alert`, `prometheus_watchdog`), AND the in-tree local
   sources (`docker_container`, `fs_change`, `pytest_session`) so the
-  default subscriber receives every event the bus ingests — matching
+  default subscriber receives every event the bus ingests, matching
   the universal-ingress contract on the read path. A subscriber that
   wants a narrower set (e.g. only GitHub) passes `event_types=[...]`
   explicitly.
-- **`since`** — optional resumable cursor. A 26-character Crockford
+- **`since`**: optional resumable cursor. A 26-character Crockford
   base32 ULID matching `^[0-9A-HJKMNP-TV-Z]{26}$`
   (validated by `waitbus/broadcast.py::_validate_since_cursor`).
   The daemon replays persisted
   events strictly after this ULID before switching to live delivery.
-- **`envelope`** — optional delivery-mode selector. Absent or
+- **`envelope`**: optional delivery-mode selector. Absent or
   `"diffs"` (the only allow-listed value today) selects the faithful
   per-event tail every subscribe frame produced before this field
   existed. **`"upsert"` is a reserved name** for a future server-side
@@ -99,7 +99,7 @@ Field contracts (validators in `waitbus/broadcast.py`):
   stable contract row in §6 alongside the existing client-side
   coalesce mode, NOT a breaking change to the diffs default. Upsert
   frames will carry the same `kind`/`proto` discriminator pair as the
-  diffs wire, so shipping the mode is purely additive — an existing v1
+  diffs wire, so shipping the mode is purely additive: an existing v1
   subscriber that never requests `"envelope":"upsert"` sees no wire
   change.
 
@@ -121,7 +121,7 @@ union), but the additivity rule is **asymmetric**:
   require a `proto` bump** (see §2). A consumer that silently ignored an
   unknown data frame would skip the underlying event's `event_id`,
   desync the `since` resume cursor on resumption, and effectively drop
-  the event with no signal — the opposite of "safely ignore." The two
+  the event with no signal, the opposite of "safely ignore." The two
   data kinds today (`event`, `truncated`) are pinned to `proto=1`;
   adding a third requires `proto=2` and a parallel update to the
   hand-decoding snippets.
@@ -153,7 +153,7 @@ three are **control** frames carrying no event identity.
 }
 ```
 
-- `kind` is **always** the literal string `"event"` — it is never the
+- `kind` is **always** the literal string `"event"`; it is never the
   event class. The event class is `event_type` (`workflow_run`,
   `workflow_job`, `prometheus_alert`, `prometheus_watchdog`, the local
   `docker_container` / `fs_change` / `pytest_session`, or any plugin
@@ -171,8 +171,8 @@ three are **control** frames carrying no event identity.
 - The agent-message facet projects into `fields` as `msg_to`, `msg_from`,
   `msg_correlation_id`, `msg_reply_to`, `msg_thread`, and `msg_body` (all
   nullable; non-null only on `agent` / `agent_message` frames). A recipient
-  or correlation filter is therefore predicate-matchable on the wire — e.g.
-  `fields.msg_to="agent_b"` — and the message content rides `msg_body` (the
+  or correlation filter is therefore predicate-matchable on the wire (e.g.
+  `fields.msg_to="agent_b"`), and the message content rides `msg_body` (the
   lean wire drops `payload_json`). These are additive `fields` keys on the
   existing `event` data-kind (no `proto` bump).
 
@@ -245,7 +245,7 @@ separate probe or warm-up frame.
   from live: a frame whose `event_id` is **≤** `caught_up_at` is a
   replayed historical event; a frame whose `event_id` is **>**
   `caught_up_at` is live. The cursor is a positional dedup tool, NOT
-  a temporal "ack-then-live" barrier — the ack itself is structurally
+  a temporal "ack-then-live" barrier: the ack itself is structurally
   first on the wire, and consumers classify subsequent frames by
   `event_id` against `caught_up_at`. It is `null` when no `since`
   cursor was supplied (nothing was replayed, so every subsequent frame
@@ -288,7 +288,7 @@ rejects emit `"supported": null`. Full field semantics are in §3.
 backpressure drops, regardless of which internal path lagged (live fan-out,
 the heartbeat loop, or the pre-ack / replay drain during the
 registration→ack window). The consumer's recovery is identical in every
-case — reconnect with backoff, narrower filters, or a `since` cursor — so the
+case (reconnect with backoff, narrower filters, or a `since` cursor), so the
 wire vocabulary stays minimal. The precise internal trigger (`heartbeat_lag`,
 `replay_lag_limit_exceeded`, …) appears only in the daemon's structured
 `subscriber_closed` log line for operators, never on the wire. The lag
@@ -308,7 +308,7 @@ One gate protects the broadcast socket:
    (`waitbus/_peercred.py::peer_uid`). The reject condition is
    `peer is None or peer != self.uid`
    (`waitbus/broadcast.py::_peer_uid`). A consumer running as a
-   different UID cannot subscribe — this is by design (single-user
+   different UID cannot subscribe; this is by design (single-user
    workstation tool).
 
 The AF_UNIX socket's kernel-attested same-UID peer credential is the
@@ -322,7 +322,7 @@ The gate is server-enforced; a consumer cannot bypass it.
 When the subscribe envelope's `proto` names an unsupported wire version,
 the daemon writes exactly one length-prefix-framed `subscribe_rejected`
 control frame back to the subscriber and then closes the connection
-(clean FIN; the next read is EOF). The frame is terminal — it is the
+(clean FIN; the next read is EOF). The frame is terminal: it is the
 last thing the daemon sends on that connection.
 
 Version reject (unsupported `proto`):
@@ -341,7 +341,7 @@ Version reject (unsupported `proto`):
   `daemon_heartbeat`, `subscribe_ack`), so a consumer can dispatch on it
   unambiguously.
 - `reason` is `version` (the envelope's `proto` is not a supported wire
-  version) — the only reason that emits a frame at subscribe time. The
+  version), the only reason that emits a frame at subscribe time. The
   other framed reason, `lag_limit_exceeded`, is emitted at eviction
   time, best-effort and only at a frame boundary (§2a).
 - `remediation` is a non-empty human-readable hint: for `version` it
@@ -353,7 +353,7 @@ Version reject (unsupported `proto`):
   version variant is emitted when the parsed envelope carries an
   unsupported `proto`. Every other request-shape reject (peer-cred UID
   mismatch, receive timeout, bad JSON, non-object envelope, bad
-  filter/event_type/since) stays **silent-EOF** — no frame. A
+  filter/event_type/since) stays **silent-EOF**, no frame. A
   lag-limit eviction emits the `lag_limit_exceeded` variant
   best-effort when the wire sits at a frame boundary, and otherwise
   closes with a clean EOF (§2a).
@@ -416,7 +416,7 @@ Contract guarantees:
   `event_id`: the `event` frame (§2a) exposes identity under the key
   `event_id`, matching this schema column exactly, and the same value is
   what a subscriber passes back as the `since` resume cursor (§2).
-  Consumers MUST treat it as opaque — the daemon-internal rowid layout
+  Consumers MUST treat it as opaque; the daemon-internal rowid layout
   is deliberately hidden.
 - `delivery_id` (not `event_id`) is the dedup key.
 - Consumers opening the SQLite DB directly MUST open it read-only.
@@ -445,7 +445,7 @@ the cursor, in `event_id` order, byte-for-byte.
 
 Coalesced mode is a **client-side projection**. The broadcast daemon,
 the subscribe frame, the wire frame, and the SQLite log are byte-
-identical across both modes — coalescing happens entirely in the
+identical across both modes; coalescing happens entirely in the
 consuming process (`waitbus.coalesce.coalesce_replay`). The
 immutable event log remains the single source of truth; the coalesced
 view is a disposable read model derived from it. This is the CQRS
@@ -499,7 +499,7 @@ followed by a faithful live tail."
 `waitbus wait` blocks until a broadcast frame matches a composed
 predicate, then exits with a code carrying the verdict (coreutils
 `timeout` convention). Operator-facing surface; the daemon wire is
-covered in §1–§5.
+covered in §1 to §5.
 
 ### Invocation shapes
 
@@ -518,14 +518,14 @@ the broadcast frame. At least one of `--sha` / `--match` / `--cond` /
 ### `--sha` is sugar (STABLE)
 
 `--sha X` is sugar for `--source github` plus a **git-style prefix match**
-on `fields.head_sha`: `X` must be 7–40 hex characters and matches any
+on `fields.head_sha`: `X` must be 7 to 40 hex characters and matches any
 frame whose `head_sha` starts with it (case-insensitive), mirroring
 `git show <prefix>`. GitHub stores the full 40-char SHA, so the 7-char
 abbreviation you copy from a commit URL resolves. A sub-7-char or non-hex
 `--sha`, or a conflicting `--source <non-github>`, is a startup error.
 
 The generic `--match fields.head_sha=<json.dumps(X)>` path is a distinct
-EXACT match (no prefixing) — use it when you have the full SHA and want
+EXACT match (no prefixing); use it when you have the full SHA and want
 exact-equality semantics. On a live stream there is no static object set
 to verify prefix uniqueness against, so `--sha` resolves on the first
 matching frame.
@@ -541,7 +541,7 @@ is parsed by `json.loads` so types are precise:
 - `fields.merged=true` matches the bool `True`.
 - `fields.parent_run_id=null` matches an explicit JSON `null` value
   but does NOT match a missing key (distinct from the absent-key case
-  by design — sentinel-guarded in `waitbus._predicate`).
+  by design, sentinel-guarded in `waitbus._predicate`).
 
 Dotted keys traverse nested dicts and lists (`fields.tags.0`). A
 missing key, ill-typed mid-path traversal, or RHS not equal to any
@@ -585,7 +585,7 @@ forward-compatibility seam.
 | `2`   | Startup failure (daemon down, bad `--repo`, malformed `--match`, evaluator extra not installed, no predicate supplied) |
 
 GitHub `skipped` / `neutral` / `action_required` / `stale` are
-non-terminal — the wait keeps streaming. There are deliberately no
+non-terminal: the wait keeps streaming. There are deliberately no
 `--treat-<x>=` override knobs (closed bucketing table; add only behind
 a stated real-consumer trigger).
 
@@ -620,11 +620,11 @@ return a truncation marker dict in place of the fenced string:
   second read for the common case where the head of the payload is
   enough.
 - The marker is waitbus-generated server-trusted JSON and is NOT
-  wrapped in `_untrusted.fence` — fencing it would lie about
+  wrapped in `_untrusted.fence`; fencing it would lie about
   provenance. The under-cap happy path keeps the fence unchanged.
 - `waitbus://event/{ulid}/raw` returns the full fenced payload
   uncapped. It is intentionally **absent** from `resources/list` and
-  `list_resource_templates` — discoverability is exclusively via the
+  `list_resource_templates`; discoverability is exclusively via the
   truncation marker, signalling explicit consent.
 
 Cap value derivation: 64 KiB ≈ ~16k tokens (typical JSON, ~4 chars/
@@ -654,7 +654,7 @@ multi-byte sequence becomes U+FFFD rather than raising.
 | Coalesced replay mode (opt-in, client-side) | `waitbus/coalesce.py::coalesce_replay`, `waitbus/_terminal.py::entity_key` | Yes |
 | `waitbus wait` invocation shapes, exit codes, `--sha` sugar, `--match` grammar, `--cond` / `--match-cel` / `--match-jmespath` flags | `waitbus/wait.py::_wait`, `waitbus/_predicate.py::Predicate` | Yes |
 | MCP `waitbus://event/{ulid}` 64 KiB cap + marker + `/raw` opt-in URI (not in `resources/list`) | `waitbus/mcp.py::_get_state`, `waitbus/_mcp_subscriptions.py::parse_event_uri` | Yes |
-| Module layout, rowid order, log/metric formats | — | **No** |
+| Module layout, rowid order, log/metric formats | n/a | **No** |
 
 ---
 
