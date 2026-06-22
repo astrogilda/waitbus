@@ -63,12 +63,29 @@ RESOURCE_UPDATED_PARAMS_REQUIRED: Final[tuple[str, ...]] = ("uri",)
 IMPLEMENTATION_REQUIRED: Final[tuple[str, ...]] = ("name", "version")
 
 # === Tool names (single source of truth) ===================
+# The three CI read tools below are kept as constants because their
+# _tool_*_impl functions still back the consolidated query_ci tool (and the
+# resource read path / unit tests); they are no longer advertised as
+# standalone tools in the MCP catalogue.
 TOOL_GET_CI_STATUS: Final[str] = "get_ci_status"
 TOOL_LIST_FAILED_JOBS: Final[str] = "list_failed_jobs"
 TOOL_GET_PR_AGGREGATE: Final[str] = "get_pr_aggregate"
+TOOL_QUERY_CI: Final[str] = "query_ci"
+TOOL_GET_EVENT: Final[str] = "get_event"
 TOOL_TAIL_EVENTS: Final[str] = "tail_events"
 TOOL_EMIT_AGENT_MESSAGE: Final[str] = "emit_agent_message"
 TOOL_READ_AGENT_MESSAGES: Final[str] = "read_agent_messages"
+
+# query_ci view selector values (single source of truth). The required
+# ``view`` enum picks which CI projection the consolidated tool returns.
+QUERY_CI_VIEW_STATUS: Final[str] = "status"
+QUERY_CI_VIEW_FAILED_JOBS: Final[str] = "failed_jobs"
+QUERY_CI_VIEW_PR_AGGREGATE: Final[str] = "pr_aggregate"
+QUERY_CI_VIEWS: Final[tuple[str, ...]] = (
+    QUERY_CI_VIEW_STATUS,
+    QUERY_CI_VIEW_FAILED_JOBS,
+    QUERY_CI_VIEW_PR_AGGREGATE,
+)
 
 # === Agent-message event class (single source of truth) ====
 # emit_agent_message hardcodes this event_type and the "agent" source on

@@ -461,6 +461,64 @@ async def test_call_tool_emit_then_read_via_handler(events_db: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# messaging facet flag gating
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_messaging_flag_off_hides_tools_from_list(events_db: Path) -> None:
+    """build_server(enable_agent_messaging=False) drops the two tools from tools/list."""
+    server = mcp_mod.build_server(enable_agent_messaging=False)
+    handler = server.request_handlers[types.ListToolsRequest]
+    result = (await handler(types.ListToolsRequest(method="tools/list", params=None))).root
+    assert isinstance(result, types.ListToolsResult)
+    names = {t.name for t in result.tools}
+    assert TOOL_EMIT_AGENT_MESSAGE not in names
+    assert TOOL_READ_AGENT_MESSAGES not in names
+
+
+@pytest.mark.asyncio
+async def test_messaging_flag_off_rejects_emit_without_writing(events_db: Path) -> None:
+    """With messaging off, calling emit_agent_message errors and writes nothing."""
+    server = mcp_mod.build_server(enable_agent_messaging=False)
+    handler = server.request_handlers[types.CallToolRequest]
+    req = types.CallToolRequest(
+        method="tools/call",
+        params=types.CallToolRequestParams(
+            name=TOOL_EMIT_AGENT_MESSAGE,
+            arguments={"to": "bob", "body": "should-not-persist", "from_agent": "alice"},
+        ),
+    )
+    result = (await handler(req)).root
+    assert isinstance(result, types.CallToolResult)
+    assert result.isError
+    # The row must NOT have been committed by the rejected write tool.
+    read = mcp_mod._read_agent_messages_impl(agent="bob", since_cursor=None, limit=100)
+    assert read["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_messaging_flag_on_registers_tools(events_db: Path) -> None:
+    """The serve default (flag on) advertises both messaging tools."""
+    server = mcp_mod.build_server(enable_agent_messaging=True)
+    handler = server.request_handlers[types.ListToolsRequest]
+    result = (await handler(types.ListToolsRequest(method="tools/list", params=None))).root
+    assert isinstance(result, types.ListToolsResult)
+    names = {t.name for t in result.tools}
+    assert TOOL_EMIT_AGENT_MESSAGE in names
+    assert TOOL_READ_AGENT_MESSAGES in names
+
+
+def test_parse_serve_args_toggles_messaging() -> None:
+    """The serve-arg parser honours --enable / --no-enable-agent-messaging (default on)."""
+    assert mcp_mod._parse_serve_args([]) is True
+    assert mcp_mod._parse_serve_args(["--enable-agent-messaging"]) is True
+    assert mcp_mod._parse_serve_args(["--no-enable-agent-messaging"]) is False
+    # Unknown extra args are ignored, default preserved.
+    assert mcp_mod._parse_serve_args(["--something-else"]) is True
+
+
+# ---------------------------------------------------------------------------
 # output-schema conformance for the new tools
 # ---------------------------------------------------------------------------
 

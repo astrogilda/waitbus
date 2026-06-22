@@ -40,9 +40,11 @@ from waitbus import _db
 from waitbus import mcp as mcp_mod
 from waitbus._broadcast_sub import BroadcastConnectionError
 from waitbus._mcp_constants import (
-    TOOL_GET_CI_STATUS,
-    TOOL_GET_PR_AGGREGATE,
-    TOOL_LIST_FAILED_JOBS,
+    QUERY_CI_VIEW_FAILED_JOBS,
+    QUERY_CI_VIEW_PR_AGGREGATE,
+    QUERY_CI_VIEW_STATUS,
+    TOOL_GET_EVENT,
+    TOOL_QUERY_CI,
     TOOL_TAIL_EVENTS,
 )
 
@@ -532,44 +534,130 @@ async def test_read_resource_handler_repo_uri_returns_snapshot(events_db: Path) 
 
 
 @pytest.mark.asyncio
-async def test_call_tool_get_ci_status_via_handler(events_db: Path) -> None:
-    """The registered _call_tool handler routes TOOL_GET_CI_STATUS correctly."""
+async def test_call_tool_query_ci_status_via_handler(events_db: Path) -> None:
+    """The registered _call_tool handler routes query_ci view=status correctly."""
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.CallToolRequest]
     req = types.CallToolRequest(
         method="tools/call",
-        params=types.CallToolRequestParams(name=TOOL_GET_CI_STATUS, arguments={}),
+        params=types.CallToolRequestParams(name=TOOL_QUERY_CI, arguments={"view": QUERY_CI_VIEW_STATUS}),
     )
     result = await handler(req)
     inner = result.root
     assert isinstance(inner, types.CallToolResult)
     assert inner.content
+    assert inner.structuredContent is not None
+    assert "runs" in inner.structuredContent
 
 
 @pytest.mark.asyncio
-async def test_call_tool_list_failed_jobs_via_handler(events_db: Path) -> None:
+async def test_call_tool_query_ci_failed_jobs_via_handler(events_db: Path) -> None:
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.CallToolRequest]
     req = types.CallToolRequest(
         method="tools/call",
-        params=types.CallToolRequestParams(name=TOOL_LIST_FAILED_JOBS, arguments={"limit": 5}),
+        params=types.CallToolRequestParams(
+            name=TOOL_QUERY_CI, arguments={"view": QUERY_CI_VIEW_FAILED_JOBS, "limit": 5}
+        ),
     )
     result = await handler(req)
     inner = result.root
     assert isinstance(inner, types.CallToolResult)
+    assert inner.structuredContent is not None
+    assert "jobs" in inner.structuredContent
 
 
 @pytest.mark.asyncio
-async def test_call_tool_get_pr_aggregate_via_handler(events_db: Path) -> None:
+async def test_call_tool_query_ci_pr_aggregate_via_handler(events_db: Path) -> None:
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.CallToolRequest]
     req = types.CallToolRequest(
         method="tools/call",
-        params=types.CallToolRequestParams(name=TOOL_GET_PR_AGGREGATE, arguments={"repo": "org/proj", "pr_number": 1}),
+        params=types.CallToolRequestParams(
+            name=TOOL_QUERY_CI,
+            arguments={"view": QUERY_CI_VIEW_PR_AGGREGATE, "repo": "org/proj", "pr_number": 1},
+        ),
     )
     result = await handler(req)
     inner = result.root
     assert isinstance(inner, types.CallToolResult)
+    assert inner.structuredContent is not None
+    assert inner.structuredContent["pr_number"] == 1
+
+
+@pytest.mark.asyncio
+async def test_call_tool_query_ci_bad_view_errors_with_valid_list(events_db: Path) -> None:
+    """An unknown view returns a structured error naming the valid views."""
+    server = mcp_mod.build_server()
+    handler = server.request_handlers[types.CallToolRequest]
+    req = types.CallToolRequest(
+        method="tools/call",
+        params=types.CallToolRequestParams(name=TOOL_QUERY_CI, arguments={"view": "bogus"}),
+    )
+    result = await handler(req)
+    inner = result.root
+    assert isinstance(inner, types.CallToolResult)
+    assert inner.isError
+    text = "".join(c.text for c in inner.content if isinstance(c, types.TextContent))
+    assert QUERY_CI_VIEW_STATUS in text
+    assert QUERY_CI_VIEW_FAILED_JOBS in text
+    assert QUERY_CI_VIEW_PR_AGGREGATE in text
+
+
+@pytest.mark.asyncio
+async def test_call_tool_query_ci_pr_aggregate_missing_param_errors(events_db: Path) -> None:
+    """The pr_aggregate view without pr_number errors and names the required params."""
+    server = mcp_mod.build_server()
+    handler = server.request_handlers[types.CallToolRequest]
+    req = types.CallToolRequest(
+        method="tools/call",
+        params=types.CallToolRequestParams(
+            name=TOOL_QUERY_CI, arguments={"view": QUERY_CI_VIEW_PR_AGGREGATE, "repo": "org/proj"}
+        ),
+    )
+    result = await handler(req)
+    inner = result.root
+    assert isinstance(inner, types.CallToolResult)
+    assert inner.isError
+    text = "".join(c.text for c in inner.content if isinstance(c, types.TextContent))
+    assert "pr_number" in text
+
+
+@pytest.mark.asyncio
+async def test_call_tool_get_event_via_handler(events_db: Path) -> None:
+    """query the get_event tool over the handler; hit and unknown-ulid error."""
+    _insert_row(
+        events_db,
+        event_id="01HZGETEV000000000000000AA",
+        event_type="workflow_run",
+        owner="org",
+        repo="proj",
+        run_id=7,
+    )
+    server = mcp_mod.build_server()
+    handler = server.request_handlers[types.CallToolRequest]
+    hit = await handler(
+        types.CallToolRequest(
+            method="tools/call",
+            params=types.CallToolRequestParams(name=TOOL_GET_EVENT, arguments={"ulid": "01HZGETEV000000000000000AA"}),
+        )
+    )
+    inner = hit.root
+    assert isinstance(inner, types.CallToolResult)
+    assert inner.structuredContent is not None
+    assert inner.structuredContent["event_id"] == "01HZGETEV000000000000000AA"
+
+    miss = await handler(
+        types.CallToolRequest(
+            method="tools/call",
+            params=types.CallToolRequestParams(name=TOOL_GET_EVENT, arguments={"ulid": "01HZNOPE0000000000000000AA"}),
+        )
+    )
+    miss_inner = miss.root
+    assert isinstance(miss_inner, types.CallToolResult)
+    assert miss_inner.isError
+    text = "".join(c.text for c in miss_inner.content if isinstance(c, types.TextContent))
+    assert "no event with id" in text
 
 
 @pytest.mark.asyncio
@@ -586,13 +674,15 @@ async def test_call_tool_tail_events_via_handler(events_db: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_call_tool_list_failed_jobs_no_failures_human_text(events_db: Path) -> None:
-    """When there are no failed jobs, human text says 'No failed workflow_job events'."""
+async def test_call_tool_query_ci_no_failures_human_text(events_db: Path) -> None:
+    """query_ci failed_jobs with no failures says 'No failed workflow_job events'."""
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.CallToolRequest]
     req = types.CallToolRequest(
         method="tools/call",
-        params=types.CallToolRequestParams(name=TOOL_LIST_FAILED_JOBS, arguments={"limit": 10}),
+        params=types.CallToolRequestParams(
+            name=TOOL_QUERY_CI, arguments={"view": QUERY_CI_VIEW_FAILED_JOBS, "limit": 10}
+        ),
     )
     result = await handler(req)
     inner = result.root
@@ -604,7 +694,7 @@ async def test_call_tool_list_failed_jobs_no_failures_human_text(events_db: Path
 
 @pytest.mark.asyncio
 async def test_list_tools_via_handler() -> None:
-    """_list_tools returns the four expected tool names."""
+    """_list_tools returns the consolidated tool catalogue."""
     server = mcp_mod.build_server()
     handler = server.request_handlers[types.ListToolsRequest]
     req = types.ListToolsRequest(method="tools/list", params=None)
@@ -612,10 +702,13 @@ async def test_list_tools_via_handler() -> None:
     inner = result.root
     assert isinstance(inner, types.ListToolsResult)
     names = {t.name for t in inner.tools}
-    assert TOOL_GET_CI_STATUS in names
-    assert TOOL_LIST_FAILED_JOBS in names
-    assert TOOL_GET_PR_AGGREGATE in names
+    assert TOOL_QUERY_CI in names
+    assert TOOL_GET_EVENT in names
     assert TOOL_TAIL_EVENTS in names
+    # The three former CI tools are no longer advertised.
+    assert "get_ci_status" not in names
+    assert "list_failed_jobs" not in names
+    assert "get_pr_aggregate" not in names
 
 
 @pytest.mark.asyncio
