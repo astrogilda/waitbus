@@ -329,7 +329,7 @@ async def test_query_ci_status_wraps_untrusted_run_fields(events_db: Path) -> No
     result = await handler(
         types.CallToolRequest(
             method="tools/call",
-            params=types.CallToolRequestParams(name=mcp_mod.TOOL_QUERY_CI, arguments={"view": "status"}),
+            params=types.CallToolRequestParams(name=TOOL_QUERY_CI, arguments={"view": "status"}),
         )
     )
     inner = result.root
