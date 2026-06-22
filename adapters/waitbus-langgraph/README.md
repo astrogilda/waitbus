@@ -36,7 +36,7 @@ configurable via `event_key` / `reacted_key`.
 ## Offline-test guarantee
 
 The package's e2e suite runs a **real in-process broadcast daemon** and a
-deterministic `FakeListChatModel` — no network, no LLM. A green suite
+deterministic `FakeListChatModel`: no network, no LLM. A green suite
 means the bus delivered and the graph routed. The daemon-backed tests are
 Linux-only (the daemon's peer-credential check uses `SO_PEERCRED`); on
 macOS they skip.

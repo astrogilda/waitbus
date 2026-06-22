@@ -61,13 +61,13 @@ publishing steps remain manual.
 ### Drain-path smoke pre-phase (runs automatically before every soak)
 
 Every `scripts.soak` invocation first runs a fast (~7 s) **drain-path smoke
-pre-phase** against a *throwaway* daemon — a separate short-lived broadcaster
+pre-phase** against a *throwaway* daemon: a separate short-lived broadcaster
 in its own temp dirs with an aggressive sub-second heartbeat. It seeds a
 backlog and drives all four subscriber-lifecycle drain paths (`token_reject`,
 `version_reject`, `replay_lag_eviction`, and `heartbeat_lag`), then verifies
 coverage and that every wire-observed eviction matches the daemon's internal
 `subscriber_closed` reason tally. **If the pre-phase fails, the soak aborts
-before the measured run starts** (writes a failure verdict, exits 1) — this is
+before the measured run starts** (writes a failure verdict, exits 1). This is
 the "smoke must pass before the long soak" gate, self-contained in one
 invocation and folded into the final verdict as the `drain_smoke_coverage` and
 `drain_smoke_close_reason_consistency` signals.
@@ -104,7 +104,7 @@ scripts/run_soak_on_hetzner.sh \
 
 The `--inject-fault-scenarios standard` flag schedules three
 subscriber-lifecycle probes during the run (token reject at 2h, version
-reject at 4h, replay-lag eviction at 6h — adjust offsets via
+reject at 4h, replay-lag eviction at 6h; adjust offsets via
 `scripts/soak/_context.py::_STANDARD_FAULT_INJECTIONS` if you want them
 to fire inside a shorter duration). For a sub-minute developer iteration,
 `--inject-fault-scenarios fast` fires every probe within the first 30
@@ -119,7 +119,7 @@ toward coverage. An axis with `observed=false` AND
 
 ### Full 24-hour soak on a tuned host
 
-Recommended host: a fresh Hetzner CCX23 VM (4 dedicated vCPU, 16 GB, ~EUR 0.087/h). Matches the canonical benchmark-baseline hardware in `benchmarks/BENCHMARKING.md` so soak verdicts and benchmark numbers are cross-comparable on the same hardware shape. **Avoid the shared-vCPU lines (CX, CPX, CAX) per `benchmarks/BENCHMARKING.md:200`** — shared vCPU contributes noisy-neighbour steal time that defeats the p99-drift signal. Provide a Hetzner Cloud API key via your preferred secret manager / the `HCLOUD_TOKEN` env var before running hcloud commands.
+Recommended host: a fresh Hetzner CCX23 VM (4 dedicated vCPU, 16 GB, ~EUR 0.087/h). Matches the canonical benchmark-baseline hardware in `benchmarks/BENCHMARKING.md` so soak verdicts and benchmark numbers are cross-comparable on the same hardware shape. **Avoid the shared-vCPU lines (CX, CPX, CAX) per `benchmarks/BENCHMARKING.md:200`**: shared vCPU contributes noisy-neighbour steal time that defeats the p99-drift signal. Provide a Hetzner Cloud API key via your preferred secret manager / the `HCLOUD_TOKEN` env var before running hcloud commands.
 
 ```bash
 # Provision via the hcloud CLI; soak runs under systemd-run --user --scope.

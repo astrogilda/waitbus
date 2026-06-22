@@ -1,4 +1,4 @@
-# agent_langgraph — a real LangGraph agent that reacts to a waitbus event
+# agent_langgraph: a real LangGraph agent that reacts to a waitbus event
 
 This example shows a [LangGraph](https://github.com/langchain-ai/langgraph)
 agent subscribing to [waitbus](https://github.com/astrogilda/waitbus) and
@@ -8,12 +8,12 @@ reacting to an event, fully offline, with no LLM network calls.
 
 `agent.py` builds a genuine `langgraph.graph.StateGraph` with two nodes:
 
-1. **`wait_on_waitbus`** — calls the waitbus SDK's blocking
+1. **`wait_on_waitbus`** calls the waitbus SDK's blocking
    `waitbus.wait_for(...)` against the broadcast daemon's socket and
    writes the received event into graph state. This is the real
    integration: a LangGraph node subscribed to the bus, woken by an event the
    daemon fans out.
-2. **`summarize`** — feeds the event into a LangChain chat model and records the
+2. **`summarize`** feeds the event into a LangChain chat model and records the
    reply.
 
 ## Real and faked components
@@ -24,7 +24,7 @@ reacting to an event, fully offline, with no LLM network calls.
   a `langchain_core.language_models.fake_chat_models.FakeListChatModel`, so the
   graph runs reproducibly and never touches the network. Pass a real
   `ChatAnthropic` / `ChatOpenAI` via `build_graph(..., model=...)` for a live
-  agent — the waitbus wiring is unchanged.
+  agent; the waitbus wiring is unchanged.
 
 ## Run it
 

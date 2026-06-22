@@ -53,7 +53,7 @@ uv run pytest tests/test_install.py -vv -p no:xdist -m slow
 The test suite has ~600 tests. Use `-p no:xdist` (serial mode) in development
 and CI to avoid Hypothesis fixture races. The slow integration test builds a
 wheel, installs it into a fresh venv, and asserts entry-points and
-`systemd-analyze verify` output — it runs in roughly one second on a warm cache.
+`systemd-analyze verify` output. It runs in roughly one second on a warm cache.
 
 ### MCP server
 
@@ -72,7 +72,7 @@ uv run pytest tests/test_mcp.py -vv -p no:xdist
 uv run waitbus mcp serve
 ```
 
-On macOS the server logs one info message and idles — the broadcast daemon
+On macOS the server logs one info message and idles, because the broadcast daemon
 stack is Linux-only.
 
 ### Systemd units
@@ -84,7 +84,7 @@ systemd-analyze --user verify systemd/*.service systemd/*.socket systemd/*.timer
 ```
 
 CI runs this check as well. When adding or removing unit files, update
-`systemd/MANIFEST.txt` — `waitbus install-systemd --sync` reads that file
+`systemd/MANIFEST.txt`. `waitbus install-systemd --sync` reads that file
 to compute orphan units from previous package versions.
 
 ---
@@ -93,9 +93,9 @@ to compute orphan units from previous package versions.
 
 waitbus's primary users are coding agents, so the docs have a second reader:
 the model that reads them to write code. Before finalising a change that
-touches the public surface — the `waitbus/__init__.py` docstring, the MCP tool
+touches the public surface (the `waitbus/__init__.py` docstring, the MCP tool
 descriptions / schemas in `waitbus/mcp.py` and `waitbus/_mcp_models.py`, the
-SDK docstrings, `AGENTS.md`, the README, or `docs/` — QA it the way an agent
+SDK docstrings, `AGENTS.md`, the README, or `docs/`), QA it the way an agent
 will consume it:
 
 1. Build and install into a clean environment:
@@ -103,13 +103,13 @@ will consume it:
    uv build --wheel && uv tool install --force dist/waitbus-*.whl
    ```
 2. In a fresh shell, give a coding agent a realistic task and no prior
-   context — e.g. "wait until pytest passes in this repo, then tell me which
+   context, e.g. "wait until pytest passes in this repo, then tell me which
    job failed", or "have two agents coordinate a handoff over waitbus".
 3. Watch which files and tool schemas it opens first, where it guesses (a gap
    in the published surface), and where it reaches for a private (`_`-prefixed)
    symbol.
-4. Fix the surface it stumbled on — a docstring, a schema description, the
-   MCP server `instructions`, a doc pointer — and repeat.
+4. Fix the surface it stumbled on (a docstring, a schema description, the
+   MCP server `instructions`, a doc pointer), then repeat.
 
 `uvx waitbus demo` and `uvx waitbus swarm-demo` run fully offline in a temp
 directory, so this loop is cheap and needs no real CI wiring. The goal: an
@@ -126,7 +126,7 @@ reading the source.
 uv pip install --editable .
 ```
 
-Console scripts point at your source tree — edits are picked up immediately.
+Console scripts point at your source tree, so edits are picked up immediately.
 However, editable installs do **not** place `share/systemd/user/` on disk.
 Hatchling's `shared-data` directive only fires during a wheel build, not during
 `--editable`. For systemd-unit testing during dev, build a wheel and install it
@@ -180,7 +180,7 @@ uv build --sdist
 tar tzf dist/waitbus-*.tar.gz | sort > tests/data/expected-sdist-manifest.txt
 ```
 
-Review the diff before committing — an unexpected addition is exactly what this
+Review the diff before committing. An unexpected addition is exactly what this
 test is designed to catch.
 
 ---
@@ -219,7 +219,7 @@ scripts/sync-versions.py --check   # exit 1 on any drift
 ```
 
 The `--check` mode runs in the pre-commit hook and in CI. Never bump version
-fields manually in `plugin.json` or `server.json` — only edit `pyproject.toml`
+fields manually in `plugin.json` or `server.json`. Only edit `pyproject.toml`
 and then run `sync-versions.py`.
 
 ---
@@ -317,9 +317,9 @@ copies them from the wheel's `share/systemd/user/` destination into
 
 ## `--dry-run` vs `doctor`
 
-- **`waitbus init --dry-run`** — prints intended actions and always exits 0.
+- **`waitbus init --dry-run`**: prints intended actions and always exits 0.
   Use for inspection before committing to install actions.
-- **`waitbus doctor`** — reads the *current* state of config, keyring,
+- **`waitbus doctor`**: reads the *current* state of config, keyring,
   binaries, and systemd units. Exits 0 if everything resolves; exits 1 on any
   issue. Use as a health gate before and after deploys.
 
@@ -337,7 +337,7 @@ stable public usage, v1.0 will declare API stability.
 
 1. Bump `pyproject.toml [project].version` to the target (e.g., `0.2.0`).
 2. Run `scripts/sync-versions.py` to propagate to all manifests.
-3. Update `CHANGELOG.md` — add a dated section for the new version.
+3. Update `CHANGELOG.md`: add a dated section for the new version.
 4. Commit + push + open PR. CI must pass before merging.
 5. After merge to main:
    ```bash

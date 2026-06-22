@@ -6,7 +6,7 @@ This document tracks future work for waitbus. Each item is gated on an external 
 
 ## Webhook delivery reliability
 
-**Why:** Under some conditions, live webhook deliveries silently drop while every process is running — distinct from the boot-ordering problem where the forwarder is simply dead. Observed with `gh webhook forward` acting as a single-threaded relay: a brief stall can drop deliveries before they reach the listener. The `etag_poll` daemon (45 s cadence) may not close the gap before a PR merges.
+**Why:** Under some conditions, live webhook deliveries silently drop while every process is running. This is distinct from the boot-ordering problem where the forwarder is simply dead. Observed with `gh webhook forward` acting as a single-threaded relay: a brief stall can drop deliveries before they reach the listener. The `etag_poll` daemon (45 s cadence) may not close the gap before a PR merges.
 
 **Instrumentation already shipped** (`/metrics` endpoint on the listener; see `waitbus/_metrics.py` and `listener.py:do_GET`): exposes
 `ci_status_webhook_received_total{path}`,
@@ -35,9 +35,9 @@ The dedup-collision class is now directly observable as a non-zero `db_dedup_ign
 
 **Why:** Honker (`russellromney/honker`) is a Rust SQLite extension that implements exactly the doorbell and per-consumer-cursor pattern the waitbus broadcast daemon was designed around, with multi-language bindings (Python, Bun, Go, Node, Rust, .NET, Ruby, Elixir, JVM, Kotlin). If it reaches production maturity it is a strict superset of the planned daemon and a candidate to replace `broadcast.py`, `_doorbell.py`, and the systemd `.socket`/`.service` units.
 
-**Why deferred:** Honker v0.2.3 publishes exactly two files on PyPI — a `cp311-macosx_11_0_arm64` wheel and a source tarball. No `manylinux*_x86_64` wheel exists for any supported Python version. Installing on a Linux x86_64 / Python 3.13 box triggers a from-source build via maturin and Cargo, which requires a Rust toolchain. Adopting Honker today would mean teaching the installer to install `rustup` and build a Rust extension on every operator machine, which violates the idempotent no-toolchain-dependency installation contract.
+**Why deferred:** Honker v0.2.3 publishes exactly two files on PyPI: a `cp311-macosx_11_0_arm64` wheel and a source tarball. No `manylinux*_x86_64` wheel exists for any supported Python version. Installing on a Linux x86_64 / Python 3.13 box triggers a from-source build via maturin and Cargo, which requires a Rust toolchain. Adopting Honker today would mean teaching the installer to install `rustup` and build a Rust extension on every operator machine, which violates the idempotent no-toolchain-dependency installation contract.
 
-**Capability validated.** A build-from-source evaluation against a real waitbus database (10,098 rows) confirmed: schema cohabitation works (Honker adds 9 namespaced `_honker_*` tables; our `events` DDL is byte-identical pre/post); `tx.notify()` is atomic with our `INSERT OR IGNORE` in a single `db.transaction()` block (strictly cleaner than our planned `_doorbell.ring()`-after-commit race); cross-process notify-to-wake latency p50 = 1.07 ms / p90 = 1.33 ms / p99 = 11.63 ms (50 samples) — verifies the README's "1-2 ms median" claim and beats our planned daemon's sub-100 ms fan-out target by two orders of magnitude.
+**Capability validated.** A build-from-source evaluation against a real waitbus database (10,098 rows) confirmed: schema cohabitation works (Honker adds 9 namespaced `_honker_*` tables; our `events` DDL is byte-identical pre/post); `tx.notify()` is atomic with our `INSERT OR IGNORE` in a single `db.transaction()` block (strictly cleaner than our planned `_doorbell.ring()`-after-commit race); cross-process notify-to-wake latency p50 = 1.07 ms / p90 = 1.33 ms / p99 = 11.63 ms (50 samples), verifying the README's "1-2 ms median" claim and beating our planned daemon's sub-100 ms fan-out target by two orders of magnitude.
 
 **What triggers it (ALL of the following must hold):**
 
@@ -54,7 +54,7 @@ The dedup-collision class is now directly observable as a non-zero `db_dedup_ign
 
 **Why:** the Honker adoption trigger #1 (PyPI manylinux wheel) is the single biggest blocker. The upstream maintainer ships a macOS arm64 wheel only; adding `cibuildwheel` to the project's `pyproject.toml` would self-unblock that trigger for everyone on Linux x86_64 in a single PR. The work is mechanical: add a `tool.cibuildwheel` section, add a GitHub Actions matrix step, push.
 
-**What:** open a PR against `russellromney/honker` adding `cibuildwheel` to the build matrix. Linux x86_64 (manylinux_2_28), macOS x86_64, macOS arm64, Windows x86_64 — the standard quartet. Bundles maturin under the hood; the existing build script needs no changes.
+**What:** open a PR against `russellromney/honker` adding `cibuildwheel` to the build matrix. Linux x86_64 (manylinux_2_28), macOS x86_64, macOS arm64, Windows x86_64: the standard quartet. Bundles maturin under the hood; the existing build script needs no changes.
 
 **What triggers it:** a contributor adds cibuildwheel support upstream. This is entirely optional.
 
@@ -68,9 +68,9 @@ The dedup-collision class is now directly observable as a non-zero `db_dedup_ign
 
 **Why deferred:** as of the last upstream check, the three required features remain three separate unmerged items with no maintainer engagement and clear pushback against the underlying requests:
 
-- PR `nats-io/nats-server#7800` — one participant, no review, ships `SOCK_STREAM` not `SOCK_SEQPACKET`, stale.
-- Issue `#7507` (`sd_notify`) — labeled `stale`, no maintainer movement.
-- Discussion `#7677` (`SO_PEERCRED`) — closed by author after maintainer pushback against adding peer-credential enforcement at the broker layer.
+- PR `nats-io/nats-server#7800`: one participant, no review, ships `SOCK_STREAM` not `SOCK_SEQPACKET`, stale.
+- Issue `#7507` (`sd_notify`): labeled `stale`, no maintainer movement.
+- Discussion `#7677` (`SO_PEERCRED`): closed by author after maintainer pushback against adding peer-credential enforcement at the broker layer.
 
 **What triggers it:** all three items ship in a single NATS Server release, AND `nats-py` gains stable `unix://` URL-scheme support, AND a single-node JetStream deployment for ~100 events/min idles under 50 MiB RSS (the planned stdlib daemon idles under 15 MiB).
 
@@ -80,7 +80,7 @@ The dedup-collision class is now directly observable as a non-zero `db_dedup_ign
 
 **Why:** the broadcast daemon currently detects slow subscribers solely by counting consecutive `EAGAIN` returns from `send()` (`LAG_LIMIT = 10`). This is the same policy systemd's varlink json-stream and NATS Core use, and it works because a saturated peer reliably surfaces `EAGAIN`. Two failure modes it does not catch:
 
-1. A subscriber that is barely draining — enough to keep `lag_count` < 10 but lagging real-time by minutes.
+1. A subscriber that is barely draining, enough to keep `lag_count` < 10 but lagging real-time by minutes.
 2. A subscriber whose recv loop is wedged on an unrelated blocking call (file I/O, DB query) but whose recv buffer happens to drain slowly via some background path.
 
 NATS JetStream's `ack_wait` and Google Pub/Sub's `subscription/oldest_unacked_message_age` solve this with explicit latency thresholds.
@@ -101,16 +101,16 @@ NATS JetStream's `ack_wait` and Google Pub/Sub's `subscription/oldest_unacked_me
 
 **What:** expose four broadcast-specific gauges on the existing loopback `:9000/metrics` endpoint:
 
-- `ci_status_broadcast_subscribers_total` — gauge, current count
-- `ci_status_broadcast_subscriber_lag_count{remote_uid=...}` — gauge per active subscriber, current `lag_count`
-- `ci_status_broadcast_subscriber_dropped_total{reason="lag_limit"|"peer_closed"|"protocol_error"}` — counter
-- `ci_status_broadcast_frames_sent_total{kind=...}` — counter, partitioned by event_type and synthetic `daemon_heartbeat`
+- `ci_status_broadcast_subscribers_total`: gauge, current count
+- `ci_status_broadcast_subscriber_lag_count{remote_uid=...}`: gauge per active subscriber, current `lag_count`
+- `ci_status_broadcast_subscriber_dropped_total{reason="lag_limit"|"peer_closed"|"protocol_error"}`: counter
+- `ci_status_broadcast_frames_sent_total{kind=...}`: counter, partitioned by event_type and synthetic `daemon_heartbeat`
 
 Wires through the existing `_metrics` module so the counter plumbing is reused.
 
 **What triggers it (any one suffices):**
 
-1. The latency-based slow-consumer item above lands — that work benefits directly from the per-subscriber gauges.
+1. The latency-based slow-consumer item above lands; that work benefits directly from the per-subscriber gauges.
 2. An operator wants to chart fan-out health alongside ingest health on the same Prometheus dashboard.
 3. waitbus is deployed in a multi-tenant or multi-user environment.
 

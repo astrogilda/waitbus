@@ -1,8 +1,8 @@
 # Claude Code lifecycle hook
 
 Emit a waitbus event whenever a Claude Code session reaches a lifecycle
-point (`Stop`, `SubagentStop`, `SessionEnd`, ...). Other agents — or a
-plain `waitbus wait` in a terminal — can then block on "that session
+point (`Stop`, `SubagentStop`, `SessionEnd`, ...). Other agents, or a
+plain `waitbus wait` in a terminal, can then block on "that session
 finished a turn" without polling.
 
 The emitter is
@@ -18,8 +18,8 @@ hook command at a venv's python).
 1. Copy `emit_lifecycle.py` somewhere stable, e.g.
    `~/.local/bin/waitbus-claude-hook.py`.
 2. Add hook entries to your `.claude/settings.json` (user-level or
-   per-project). Documentation only — nothing in waitbus writes to your
-   settings file:
+   per-project). This is documentation only; nothing in waitbus writes
+   to your settings file:
 
 ```json
 {
@@ -79,7 +79,7 @@ One row per hook firing, using the built-in `agent` source taxonomy:
 | `delivery_id` | `claude-code:<session_id>:<hook_event>:<emit time ns>` |
 | `ingest_method` | `claude_code_hook` |
 
-The live broadcast frame is lean — it drops `payload_json` — so live
+The live broadcast frame is lean: it drops `payload_json`, so live
 subscribers match on `msg_body` / `msg_from` (which do ride the wire)
 and re-fetch the full hook payload by `event_id` via
 `waitbus read-events` if they need it.
@@ -112,8 +112,8 @@ The `--match` grammar is documented in `docs/CONSUMER_API.md`
 ## Never-block contract
 
 The script always exits 0. Emit failures (daemons down, store missing,
-unreadable stdin) print one line to stderr and are otherwise swallowed
-— a broken bus must never block a Claude Code session, because hook
+unreadable stdin) print one line to stderr and are otherwise swallowed.
+A broken bus must never block a Claude Code session, because hook
 failures surface as noise in the agent transcript.
 
 ## Uninstall

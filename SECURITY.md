@@ -12,7 +12,7 @@ Please include reproduction steps, affected version, and impact assessment.
 **Response timeline:** Acknowledgement within 72 hours of receipt. A fix
 or status update within 30 days. We follow a coordinated-disclosure
 process and request that you do not publish details until either (a) a fix
-has shipped, or (b) 90 days have passed since your report — whichever
+has shipped, or (b) 90 days have passed since your report, whichever
 comes first.
 
 **Release signing key:** Annotated tags are signed with the EDDSA key
@@ -27,7 +27,7 @@ extent of recognition.
 waitbus is a **single-user, single-workstation daemon stack** (Linux
 systemd or macOS launchd) that caches GitHub webhook deliveries and
 Prometheus alerts in a loopback SQLite database. It is not multi-tenant
-and does not authenticate end-users — its security perimeter is the
+and does not authenticate end-users; its security perimeter is the
 operator's user account.
 
 ### In scope
@@ -39,7 +39,7 @@ operator's user account.
   - `/alertmanager`, `/watchdog` (Prometheus deliveries): HMAC keyed on
     the `alertmanager-hmac` secret, same delivery mechanism.
 - **Peer-credential UID check** on every connection to the AF_UNIX
-  broadcast socket — only connections from the daemon's own UID are
+  broadcast socket: only connections from the daemon's own UID are
   accepted. Linux uses `SO_PEERCRED` (returns the connecting peer's
   `struct ucred`); macOS uses `getpeereid()` via ctypes (returns the
   EUID + EGID), matching dbus-on-Darwin's documented posture. See the
@@ -56,7 +56,7 @@ operator's user account.
   state dir, readable only by the owning user; a lifted disk image is
   covered by the host FDE the operator already runs. waitbus adds no
   app-level encryption layer (that would be a second key on the same
-  disk — no defense an attacker with the disk image cannot also lift),
+  disk, no defense an attacker with the disk image cannot also lift),
   matching the posture of `gh auth`, `aws`, and `docker login`.
 - **Bounded version-failure disclosure.** On an unsupported wire
   `proto` the daemon writes a single `subscribe_rejected` frame (see
@@ -69,7 +69,7 @@ operator's user account.
   `sock_sendall`) so a slow or half-dead peer cannot stall the accept
   loop. Every request-shape reject (peer-cred UID mismatch, receive
   timeout, bad JSON, non-object envelope, bad filter/event_type/since,
-  lag-limit) remains silent-EOF — operators debug those via the daemon's
+  lag-limit) remains silent-EOF; operators debug those via the daemon's
   structured logs, not a client-visible error channel.
 - **Filter-string regex validation** on the broadcast subscribe path
   prevents shell-metachar injection in filter values.
@@ -98,16 +98,16 @@ operator's user account.
   We do not attempt to auto-repair operator-authored config.
 - **Native Windows.** Not supported. The trust model reduces to an
   AF_UNIX socket plus a `SO_PEERCRED` same-UID peer check, which has no
-  Win32 equivalent. Windows users run waitbus under **WSL2** — a real
-  Linux kernel — where `pip install waitbus` works exactly as on native
+  Win32 equivalent. Windows users run waitbus under **WSL2** (a real
+  Linux kernel) where `pip install waitbus` works exactly as on native
   Linux and the same AF_UNIX + same-UID security model holds.
 
 ### Network egress and telemetry
 
 waitbus has **zero default egress and ships no telemetry.** The broadcast
 daemon, every subscriber (`waitbus wait`, `waitbus read-events`, `waitbus mcp
-serve`), and the `emit()` ingress path make no outbound network calls —
-nothing is reported to the maintainer or any third party. The only
+serve`), and the `emit()` ingress path make no outbound network calls.
+Nothing is reported to the maintainer or any third party. The only
 network surfaces are:
 
 - the **optional** inbound webhook listener on loopback
@@ -125,10 +125,10 @@ No code path sends data anywhere the operator has not configured it to.
 ### Optional inbound metrics endpoint
 
 The broadcast daemon's `/metrics` endpoint is off by default and its
-loopback bind is hardcoded — there is no configuration path to a public
+loopback bind is hardcoded: there is no configuration path to a public
 interface. The surface is read-only GET: no request body is consumed and
 no state is mutated. The exposition carries operational counters,
-gauges, and histograms only — no event payloads or repository content
+gauges, and histograms only, with no event payloads or repository content
 (the broadcast metrics carry no repo-name labels). Intended consumers
 are same-host scrapers: a local Prometheus or the operator's `curl`.
 
@@ -137,7 +137,7 @@ are same-host scrapers: a local Prometheus or the operator's `curl`.
 The `waitbus mcp serve` server emits each broadcast event as TWO MCP
 notifications:
 
-- `notifications/claude/channel` — a vendor-specific MCP extension
+- `notifications/claude/channel`: a vendor-specific MCP extension
   used by Claude Code. Surfaces in Claude Code as a
   `<channel source="waitbus">` injection in the next conversation
   turn. **This is not part of the public MCP spec.** Documented at
@@ -147,10 +147,10 @@ notifications:
   low-level escape hatch (which the SDK itself marks as experimental
   and subject to change without notice). If the extension is renamed,
   removed, or the SDK closes the `send_message` path, the Claude Code
-  channel integration silently stops working — the server keeps
+  channel integration silently stops working: the server keeps
   running, but Claude Code no longer surfaces the events as channel
   injections.
-- `notifications/resources/updated` — a standard MCP notification.
+- `notifications/resources/updated`: a standard MCP notification.
   This fallback continues to function for Claude Desktop and every
   other spec-compliant MCP client regardless of changes to the
   vendor-specific method.
@@ -179,7 +179,7 @@ flag, which would leak to shell history), merges it under the key
 `<name>` without clobbering siblings, and writes the file atomically
 (`secrets.json.tmp` chmod-0600 *before* the payload, then `os.replace`,
 so a concurrent daemon never reads a torn file). The daemon reads it via
-stdlib `json.loads` — there is no in-process key material, no D-Bus
+stdlib `json.loads`: there is no in-process key material, no D-Bus
 session, no external tool, no Python `cryptography` dependency.
 
 **At-rest protection is delegated to host full-disk encryption**
@@ -221,7 +221,7 @@ and the operator is also the only caller. Two safety properties hold:
   `DELETE` / `DROP` / `CREATE` / `ALTER` / `REPLACE` / `VACUUM` /
   `ANALYZE` / `REINDEX` are rejected before any connection work
   happens. `PRAGMA` / `ATTACH` / `DETACH` are additionally
-  rejected anywhere in the statement (defense in depth — these
+  rejected anywhere in the statement (defense in depth, since these
   can mutate connection state without writing rows). Multi-
   statement input is rejected; a single trailing `;` is tolerated.
 
@@ -230,7 +230,7 @@ SQL-injection is moot because (a) there is no untrusted caller to
 inject through, and (b) the read-only connection blocks the
 post-injection write that would matter. The injection-style gates
 exist to catch operator typos (`DELETE` for `SELECT`) before they
-reach a DB that — in a future code path — might no longer be
+reach a DB that, in a future code path, might no longer be
 read-only.
 
 A trailing `LIMIT N` is injected at the outer level (default 1000)
@@ -243,7 +243,7 @@ who need an unbounded scan pass `--no-limit` and own the runtime.
 shell out) execute arbitrary Python and SQL against the operator's
 local SQLite events database whenever the daemon detects a schema
 version drift on startup. The migration runner is intentionally
-permissive — any Python file under `waitbus/migrations/` with
+permissive: any Python file under `waitbus/migrations/` with
 a `migrate(conn: sqlite3.Connection)` entry-point becomes a code-
 execution surface bundled into the wheel.
 
@@ -253,7 +253,7 @@ Two controls bound this trust:
   approval (`@astrogilda`) on any change to
   `waitbus/migrations/*.py` before a PR can merge. This makes
   introducing a malicious migration via opportunistic PR observably
-  hard — every diff against the migrations tree blocks until owner-sign.
+  hard: every diff against the migrations tree blocks until owner-sign.
 - **SQL-only-when-feasible policy.** New migrations SHOULD ship as a
   pure `.sql` file invoked from a one-line Python wrapper
   (`conn.executescript(Path(__file__).with_suffix(".sql").read_text())`)
@@ -377,14 +377,14 @@ The listener binds `127.0.0.1:9000` by default and accepts unauthenticated
 HTTP from anything on the loopback interface. Two supported deployment
 modes:
 
-**Mode A — Reverse proxy (recommended).** A TLS-terminating reverse
+**Mode A: Reverse proxy (recommended).** A TLS-terminating reverse
 proxy (cloudflared, tailscale-funnel, local nginx) terminates external
 TLS and proxies decrypted HTTP to `127.0.0.1:9000`. The proxy is
 expected to enforce hardening that the listener does not bother
 replicating (HSTS, redirect-loop guards, TLS 1.3 floor). The listener
 trusts the proxy to deliver well-formed Content-Length-framed requests.
 
-**Mode B — LAN-isolated workstation.** The operator runs waitbus
+**Mode B: LAN-isolated workstation.** The operator runs waitbus
 on a dev box reachable only over WireGuard or Tailscale (not the public
 internet). GitHub Enterprise or a self-hosted Prometheus instance
 delivers webhooks directly to `127.0.0.1:9000` across the encrypted
@@ -400,7 +400,7 @@ Both modes share:
 - `REQUEST_READ_TIMEOUT_SEC=30` slow-loris guard applied before both
   header parsing and body reading
 - `MAX_BODY_BYTES` payload cap (10 MiB)
-- Transfer-Encoding chunked rejection (411) — prevents cap bypass
+- Transfer-Encoding chunked rejection (411), which prevents cap bypass
 - Duplicate Content-Length rejection (400) per RFC 9112 §6.3.3
 - Method allowlist with JSON 405 for HEAD, OPTIONS, PUT, DELETE, PATCH
 - JSON error envelopes on all 4xx/5xx responses (no HTML pages)
@@ -420,7 +420,7 @@ gh attestation verify <artifact> \
   --signer-workflow slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
 ```
 
-The `--signer-workflow` assertion is load-bearing — it pins which builder
+The `--signer-workflow` assertion is load-bearing: it pins which builder
 emitted the provenance, preventing a compromised contributor from
 substituting their own workflow output.
 

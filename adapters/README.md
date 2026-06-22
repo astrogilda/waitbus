@@ -25,7 +25,7 @@ Each directory here is a **standalone installable project** with its own
 
 No permission is needed to ship these: they live here, one `pip install`
 away. Pull requests to the frameworks themselves come only after the
-self-published packages demonstrate real usage — maintainers merge what
+self-published packages demonstrate real usage. Maintainers merge what
 their users ask for, so users come first and upstream PRs second.
 
 ## Running the adapter test suites
@@ -46,6 +46,6 @@ scripts/run_adapter_tests.sh
 
 The suites are offline: they drive a real in-process broadcast daemon with
 deterministic fake models (`TestModel` for Pydantic AI, `FakeListChatModel`
-for LangGraph) — no network, no LLM. The daemon-backed tests are
+for LangGraph), with no network and no LLM. The daemon-backed tests are
 Linux-only (the broadcast daemon's peer-credential check uses
 `SO_PEERCRED`); on macOS they skip.

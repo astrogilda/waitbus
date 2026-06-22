@@ -2,21 +2,21 @@
 
 Small, copy-pasteable ways to put events on the bus from a shell. Every
 recipe needs the daemons running (`waitbus serve --all` or the systemd
-units) — an emitter with no daemon emits into the void.
+units). An emitter with no daemon emits into the void.
 
 Before reaching for a recipe, check the built-in sources:
 
-- **docker** — the in-tree watcher (`waitbus/sources/docker_watch.py`)
+- **docker**: the in-tree watcher (`waitbus/sources/docker_watch.py`)
   already tails the Docker events API with reconnect-and-replay; the
   forwarder recipe below is the manual / remote-host variant only.
-- **pytest** — `waitbus/sources/pytest_emit.py` ships as a worked
+- **pytest**: `waitbus/sources/pytest_emit.py` ships as a worked
   emitter example: a pytest plugin that emits on session finish. Read
   it before writing a new emitter; it shows the deterministic
   `delivery_id` and batching conventions in ~200 lines.
-- **agent lifecycle hooks** — see
+- **agent lifecycle hooks**: see
   [claude-code-hook.md](claude-code-hook.md) for the Claude Code
   session-lifecycle emitter.
-- **GitHub Actions** — the zero-setup path is the built-in `github`
+- **GitHub Actions**: the zero-setup path is the built-in `github`
   source; for the deliberate push-from-the-runner case there is a
   relay-action skeleton at
   [`examples/emitters/github_action/`](../../examples/emitters/github_action/README.md).
@@ -41,7 +41,7 @@ Run a command, then emit one event carrying its exit code. Replace
 `WAITBUS_CMD` payload text). The payload is built by `python3` (already
 on every waitbus host) with `json.dumps` over environment variables, so
 a command containing double quotes or backslashes still produces valid
-JSON — raw shell interpolation into a JSON template would silently
+JSON. Raw shell interpolation into a JSON template would silently
 break on those characters.
 
 <!-- recipe:command-finished -->
@@ -74,7 +74,7 @@ A wrapper script that runs an arbitrary command, emits the matching
 event, and exits with the wrapped command's status (so it composes
 with `&&` / `set -e` exactly like the bare command). Because the
 wrapped command is arbitrary, the payload is built by `python3` with
-`json.dumps` over the environment and the surviving `"$@"` argv —
+`json.dumps` over the environment and the surviving `"$@"` argv, so
 arguments carrying double quotes or backslashes round-trip exactly,
 where raw shell interpolation into a JSON template would emit invalid
 JSON and (with the emit's output discarded) silently lose the event.
@@ -106,13 +106,13 @@ exit "$rc"
 
 The doorbell ring inside `waitbus emit` is best-effort: if the
 broadcast daemon is down, the row still commits and is delivered on
-the daemon's next sweep — a bounded delay, never a lost event.
+the daemon's next sweep: a bounded delay, never a lost event.
 
 ## docker events forwarder
 
 The built-in docker source is the default path (it reconnects and
 replays gaps). This one-liner is for the cases the watcher does not
-cover — a remote host streaming into a local bus over SSH, or a
+cover, such as a remote host streaming into a local bus over SSH, or a
 one-off debugging tail. It reuses the watcher's
 `docker:<id>:<action>:<timestamp>` delivery-id scheme, taking the
 timestamp from the event's own `TimeNano` (the same value the watcher's
@@ -149,7 +149,7 @@ it). The projection promotes four columns:
 | `source` | `source` | rendered as `urn:waitbus:source:<name>` |
 | `type` | `event_type` | projected verbatim |
 | `time` | `received_at` | epoch ns rendered RFC3339 (truncated to microseconds) |
-| `datacontenttype` | — | fixed `application/json` |
+| `datacontenttype` | (none) | fixed `application/json` |
 | `data` | every remaining column | lossless remainder |
 
 An external producer holding a CloudEvents envelope maps it *inversely*

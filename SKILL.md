@@ -1,6 +1,6 @@
 ---
 name: waitbus
-description: The workstation-local, cross-harness status bus — a blocking wait/emit primitive that lets any agent or script wait on, or emit, CI / pytest / Docker / filesystem events (finish or fail) without polling, framework-agnostically. GitHub Actions is source #1: subscribes to workflow_run + workflow_job (sub-second matrix-cell failure) from a local webhook cache, auto-detecting the repo via git remote. Use when the user asks "is CI green?", "did the deploy pass?", "what's the status of the latest run?", "which job failed?", wants a multi-repo CI overview, wants to block until a commit's checks finish (`waitbus wait --sha`), feed local test/build/container events to an agent (`waitbus emit` / `waitbus source`), or see push-vs-poll savings (`waitbus stats`). Event-driven; faster than `gh run list` polling.
+description: The workstation-local, cross-harness status bus, a blocking wait/emit primitive that lets any agent or script wait on, or emit, CI / pytest / Docker / filesystem events (finish or fail) without polling, framework-agnostically. GitHub Actions is source #1: subscribes to workflow_run + workflow_job (sub-second matrix-cell failure) from a local webhook cache, auto-detecting the repo via git remote. Use when the user asks "is CI green?", "did the deploy pass?", "what's the status of the latest run?", "which job failed?", wants a multi-repo CI overview, wants to block until a commit's checks finish (`waitbus wait --sha`), feed local test/build/container events to an agent (`waitbus emit` / `waitbus source`), or see push-vs-poll savings (`waitbus stats`). Event-driven; faster than `gh run list` polling.
 homepage: https://github.com/astrogilda/waitbus
 repository: https://github.com/astrogilda/waitbus
 ---
@@ -10,8 +10,8 @@ repository: https://github.com/astrogilda/waitbus
 waitbus is the workstation-local, cross-harness status bus: a blocking
 wait/emit primitive that lets any agent or script (across Cursor, Claude
 Code, and any tool on the box) wait on, or emit, events from five
-built-in sources — GitHub Actions CI, pytest sessions, Docker container
-lifecycle, filesystem changes, and Prometheus Alertmanager — plus any
+built-in sources (GitHub Actions CI, pytest sessions, Docker container
+lifecycle, filesystem changes, and Prometheus Alertmanager) plus any
 plugin source registered under the `waitbus.sources.v1` entry-point group.
 Events land in a local SQLite event store the moment they arrive, and a
 broadcast daemon fans each row to every connected consumer within a
@@ -25,21 +25,21 @@ The core verbs are framework-agnostic:
 - `waitbus wait` blocks until a predicate over the event stream is
   satisfied (for example, a commit's checks finish, or a named source
   fails), then exits. No polling loop.
-- `waitbus emit` puts an event on the bus from any source — a local test
-  run, a build, a container, or an agent's own progress signal — so
+- `waitbus emit` puts an event on the bus from any source (a local test
+  run, a build, a container, or an agent's own progress signal) so
   other agents and scripts can react to it.
 - `waitbus on` runs a command when a matching event arrives.
 - `waitbus source list` / `show` / `verify` introspect the built-in and
   plugin-registered source taxonomy.
 - `waitbus stats` reports push-vs-poll savings.
 
-GitHub Actions was the first source wired — which is why the examples
-below lead with CI — but waitbus is not CI-only. For CI specifically, two
+GitHub Actions was the first source wired, which is why the examples
+below lead with CI, but waitbus is not CI-only. For CI specifically, two
 GitHub event types are tracked:
 
-- `workflow_run` — run-level state (queued/in_progress/completed for the
+- `workflow_run`: run-level state (queued/in_progress/completed for the
   whole workflow). Fires at run start and run end only.
-- `workflow_job` — per-job state, one entry per matrix cell, sub-second
+- `workflow_job`: per-job state, one entry per matrix cell, sub-second
   on failure. Closes the 30+ min blind spot where a job failed at minute
   5 but the parent run didn't complete until minute 32. Pass
   `--include-jobs` to `waitbus read-events list` to unroll child jobs under
@@ -53,7 +53,7 @@ GitHub event types are tracked:
 - "Give me a CI overview across my repos."
 
 If the user is inside a git checkout with a `github.com` origin, invoke
-without flags — `waitbus read-events list` auto-detects `owner/repo`.
+without flags; `waitbus read-events list` auto-detects `owner/repo`.
 
 ## How to use
 
@@ -120,7 +120,7 @@ state directory; it is only needed when you run the opt-in webhook listener.
 shipped in the wheel into `~/.config/systemd/user/` and runs
 `daemon-reload`.
 
-`uvx` must be on PATH — it is the runtime that launches the
+`uvx` must be on PATH; it is the runtime that launches the
 `waitbus mcp serve` sub-command when an MCP client spawns the server.
 
 ## Architecture
@@ -155,7 +155,7 @@ override either default.
   state directory for polling-only coverage.
 - **ETag poll silent:** `systemctl --user list-timers waitbus-etag-poll.timer`
   and `journalctl --user -u waitbus-etag-poll -n 50`.
-- **Signature rejected (401):** credential mismatch — rotate via
+- **Signature rejected (401):** credential mismatch; rotate via
   `waitbus install-credentials github-webhook-secret`, restart the
   listener (`systemctl --user restart waitbus-listener.service`),
   and re-run `gh webhook forward` with the new value.
@@ -169,12 +169,12 @@ override either default.
 - The runtime depends on `typer` for the umbrella CLI only; every
   internal module is pure stdlib.
 
-## Push mode — broadcast daemon and live subscribers
+## Push mode: broadcast daemon and live subscribers
 
 Three subscriber surfaces consume the broadcast daemon today:
 
 - `waitbus read-events watch` prints one stdout line per matching
-  event — the canonical shape for a background monitoring loop. Filters default to the current git checkout's
+  event, the canonical shape for a background monitoring loop. Filters default to the current git checkout's
   `owner/repo`; `--all-events` broadens to every repo. A local ULID
   cursor at `<state-dir>/cursors/<owner>_<repo>.ulid` is rewritten
   atomically after every consumed frame so reconnects resume from the
@@ -207,7 +207,7 @@ shape
  "envelope": "diffs"}
 ```
 
-— validated against an anchored regex (no shell-metachar surface).
+Subscribe frames are validated against an anchored regex (no shell-metachar surface).
 The peer-credential UID check restricts subscribers to the daemon's
 own UID (Linux uses `SO_PEERCRED`; macOS uses `getpeereid()` via
 ctypes) -- that same-UID check is the sole subscriber gate, so there is
@@ -233,7 +233,7 @@ cycle with the listener and watchdog units (both anchored via
 ### Why `pr-monitor` ships no systemd unit (manual-invoke by design)
 
 `waitbus pr-monitor tick` is the only subcommand with no shipped
-`.service`/`.timer`, and that is deliberate — not an oversight.
+`.service`/`.timer`, and that is deliberate, not an oversight.
 `pr-monitor` is a session-scoped subscriber: one invocation watches a
 specific set of PRs (`--pr 7 --pr 9` / `--owner foo --repo bar`) and
 self-exits once every watched PR reaches a terminal state. A static

@@ -1,4 +1,4 @@
-# waitbus-circleci — reference plugin for `waitbus.sources.v1`
+# waitbus-circleci: reference plugin for `waitbus.sources.v1`
 
 This directory contains a complete, buildable Python package that demonstrates
 how to register a custom event source with [waitbus](https://github.com/astrogilda/waitbus)
@@ -6,7 +6,7 @@ via the `waitbus.sources.v1` entry-point group.
 
 The plugin registers the source name `circleci` and declares support for the
 `pipeline_finished` event type. The `fetch` implementation is a documented
-stub — it does not call the CircleCI API — so that this example can be read,
+stub that does not call the CircleCI API, so this example can be read,
 installed, and tested without any CircleCI account or credentials.
 
 ---
@@ -113,7 +113,7 @@ waitbus wait --source circleci --event-type pipeline_finished
 
 ## Authoring your own plugin (the 4 steps)
 
-### Step 1 — Create a Python package
+### Step 1: Create a Python package
 
 ```
 my-waitbus-plugin/
@@ -124,7 +124,7 @@ my-waitbus-plugin/
             plugin.py
 ```
 
-### Step 2 — Declare the entry-point in `pyproject.toml`
+### Step 2: Declare the entry-point in `pyproject.toml`
 
 ```toml
 [project]
@@ -138,7 +138,7 @@ my_source = "my_waitbus_plugin:plugin"
 The key (`my_source`) becomes the canonical source name. The value
 (`my_waitbus_plugin:plugin`) is the Python import path to the plugin instance.
 
-### Step 3 — Implement the `SourcePlugin` Protocol
+### Step 3: Implement the `SourcePlugin` Protocol
 
 ```python
 # src/my_waitbus_plugin/plugin.py
@@ -165,7 +165,7 @@ class MySourcePlugin:
         ...
 ```
 
-### Step 4 — Export a singleton instance from `__init__.py`
+### Step 4: Export a singleton instance from `__init__.py`
 
 ```python
 # src/my_waitbus_plugin/__init__.py

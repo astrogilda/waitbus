@@ -1,21 +1,21 @@
-# Competitive landscape — where waitbus fits, and where it does not
+# Competitive landscape: where waitbus fits, and where it does not
 
 *(Data as of 2026-05-28; star counts and spec versions may change.)*
 
 ## The one-paragraph map
 
 waitbus is a **single-machine, cross-harness, multi-source status bus** with a
-dumb `wait`/`emit` primitive — the local opt-in event-broadcast model the OS
+dumb `wait`/`emit` primitive, the local opt-in event-broadcast model the OS
 already ships (D-Bus signals, inotify, journald), with a durable replay log and
 a wait predicate added. Its technical scope is narrow and specific:
-**normalizing events the agent did not initiate — a webhook, a CI run, a file
-change, a container exit — into one wait-predicate surface on a single
+**normalizing events the agent did not initiate (a webhook, a CI run, a file
+change, a container exit) into one wait-predicate surface on a single
 peer-credential-gated machine, and fanning them (plus any agent's own `emit()`)
 out to every local subscriber, so a finish or a failure reaches every tool on
 the box at once.** Everything outside that corner belongs to a
 neighbour.
 
-## vs. MCP Tasks (SEP-1686) — the protocol, not a product
+## vs. MCP Tasks (SEP-1686): the protocol, not a product
 
 MCP Tasks shipped experimental in the 2025-11-25 MCP spec. It is a
 **requestor-driven, call-now/fetch-later** primitive: a client augments a
@@ -40,12 +40,12 @@ What this means for waitbus, source by source:
   is not a Tasks concept.
 
 For agent-started work, `task=True` is often the right tool. For events the
-agent did not initiate, Tasks has no answer — the gap waitbus fills.
+agent did not initiate, Tasks has no answer, which is the gap waitbus fills.
 
 ## vs. local agent-to-agent buses (different data model)
 
 - **agent-message-queue (AMQ).** A file-based (Maildir-style), MIT, *addressed*
-  messaging bus: `--to`, threads, replies, handoff state — "the conversation
+  messaging bus: `--to`, threads, replies, handoff state, "the conversation
   between agents." waitbus has no `to:`/reply/thread model; it is broadcast
   source-ingestion. Low functional overlap. If you want delegation and
   handoff, AMQ's model is the right shape, and waitbus could feed events into it.
@@ -53,26 +53,26 @@ agent did not initiate, Tasks has no answer — the gap waitbus fills.
   only waitbus's *status-broadcast* slice (one agent emits, others wake); waitbus
   adds the source-ingestion-and-normalization layer that inter-session does not
   have.
-- **agent-event-bus.** The closest analog — a broadcast pub/sub MCP server with
-  optional webhook push — but at an early adoption stage. waitbus differs in being
+- **agent-event-bus.** The closest analog, a broadcast pub/sub MCP server with
+  optional webhook push, but at an early adoption stage. waitbus differs in being
   a peer-cred-gated local daemon with multi-source normalization and a
   fault-injected longevity record rather than an HTTP MCP server.
 
 ## vs. orchestration platforms (different scale)
 
 **Ruflo** (formerly claude-flow) and similar are heavyweight, cross-machine
-agent-orchestration platforms — routers, swarms, shared vector memory,
+agent-orchestration platforms: routers, swarms, shared vector memory,
 federation. That is a different category and a different scale; waitbus is the
 opposite end (one machine, one primitive) and could be a *source* feeding such
-an orchestrator, not a competitor to it. Cross-machine relay is out of scope for the waitbus core (one machine, one
-primitive).
+an orchestrator, not a competitor to it. Cross-machine relay is out of scope for
+the waitbus core.
 
 ## Kernel-enforced local trust boundary
 
 The one thing none of the above can copy on waitbus's own axis: a Unix-domain
 socket delivers the connecting peer's UID via `SO_PEERCRED` as a **kernel
-fact**, at `accept()`, with zero userspace participation. TCP/TLS — what every
-hosted relay and every Streamable-HTTP MCP server runs on — can only present a
+fact**, at `accept()`, with zero userspace participation. TCP/TLS, what every
+hosted relay and every Streamable-HTTP MCP server runs on, can only present a
 token or certificate. "This byte came from UID 1000 on this machine" is not
 reproducible across a network boundary. For a bus gating on machine-local OS
 events, that is structural, not a feature.
@@ -106,7 +106,7 @@ waitbus does **not** claim:
   harmful. The accurate statement is that it is **absent today and now moving**: MCP is
   request-response (server-push to idle agents was requested and closed
   not-planned, and event-driven push is now in a chartered Triggers & Events
-  Working Group — as a per-server callback, not a local cross-harness bus), and
+  Working Group, as a per-server callback, not a local cross-harness bus), and
   A2A's push is task-scoped to client-initiated tasks. That is absence by scope and architecture, not a harm
   verdict;
 - that waitbus invented local broadcast, offers a novel security model (it is the

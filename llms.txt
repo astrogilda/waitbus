@@ -2,14 +2,14 @@
 
 > A workstation-local, cross-harness event bus: wait on or broadcast events
 > from GitHub Actions CI, pytest, Docker, and the filesystem over a same-UID
-> local socket — no polling, no cloud — and let agents coordinate on the same
-> bus. waitbus is both a Python library and an MCP server.
+> local socket, with no polling and no cloud, and lets agents coordinate on the
+> same bus. waitbus is both a Python library and an MCP server.
 
 ## Docs
 
 - [README](https://github.com/astrogilda/waitbus/blob/main/README.md): Install, quick-start, and the CLI / library / MCP entry points.
 - [Consumer API](https://github.com/astrogilda/waitbus/blob/main/docs/CONSUMER_API.md): The stable wire protocol, events schema, subscribe handshake, and filter syntax. Read this to write a subscriber.
-- [Agent messaging](https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md): Agent-to-agent request/reply over the bus — the request/respond SDK and the MCP emit/read tools.
+- [Agent messaging](https://github.com/astrogilda/waitbus/blob/main/docs/AGENT_MESSAGING.md): Agent-to-agent request/reply over the bus: the request/respond SDK and the MCP emit/read tools.
 - [Custom sources](https://github.com/astrogilda/waitbus/blob/main/docs/CUSTOM_SOURCES.md): Writing a custom event source as a versioned entry-point plugin.
 - [Architecture](https://github.com/astrogilda/waitbus/blob/main/docs/ARCHITECTURE.md): The daemon, the broadcast bus, predicate waits, and the MCP surface.
 - [Exit codes](https://github.com/astrogilda/waitbus/blob/main/docs/EXIT_CODES.md): The CLI exit-code contract for wait / on / serve.

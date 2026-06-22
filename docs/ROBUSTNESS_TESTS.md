@@ -154,7 +154,7 @@ The wire-side reject write is a single non-blocking `send` wrapped in
 the subscriber's tx queue is empty (the wire sits at a frame
 boundary); with queued unsent bytes the subscriber gets a clean EOF
 instead, so the reject can never land mid-frame. The frame is
-best-effort either way — by definition the path runs only when the
+best-effort either way: by definition the path runs only when the
 subscriber is already lag-saturated. This contract is documented in
 `docs/CONSUMER_API.md` section 2a.
 

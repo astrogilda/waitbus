@@ -37,7 +37,7 @@ _n=500 samples per config, seed=42_
 
 | Class | Param | Perturbation | delta-p50 | delta-p95 | delta-p99 | Concern? |
 | ----- | ----- | ------------ | --------- | --------- | --------- | -------- |
-| small | mu_per_sec | +10% | -0.1% | -8.3% | -9.5% | — |
+| small | mu_per_sec | +10% | -0.1% | -8.3% | -9.5% | no |
 
 ## Methodology
 
@@ -61,7 +61,7 @@ measures corpus sensitivity.
   ```
   Outputs `benchmarks/data/sensitivity-results.json` and regenerates
   this file.  Commit both alongside the updated TOML.
-- **Smoke (CI):** `python scripts/sensitivity_sweep.py --smoke` — one
-  perturbation x one class, verifies the script is not broken without
+- **Smoke (CI):** `python scripts/sensitivity_sweep.py --smoke` runs one
+  perturbation x one class. It verifies the script is not broken without
   running all 54 configs.
 

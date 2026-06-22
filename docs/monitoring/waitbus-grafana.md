@@ -1,4 +1,4 @@
-# waitbus Grafana Dashboard — Operator Runbook
+# waitbus Grafana Dashboard: Operator Runbook
 
 Dashboard file: `monitoring/grafana/waitbus-backpressure.json`
 Dashboard UID: `waitbus-backpressure`
@@ -16,7 +16,7 @@ http://127.0.0.1:9000/metrics
 ```
 
 This endpoint is available as long as `waitbus listener serve` is running. No
-extra flag is needed — the `/metrics` route is always active on the listener's HTTP port.
+extra flag is needed. The `/metrics` route is always active on the listener's HTTP port.
 
 The broadcast-daemon metrics (the Broadcast and Backpressure rows: subscriber
 count, send-latency histogram, watermark replay, delivered/emitted counters)
@@ -104,8 +104,8 @@ events per second smoothed over a 5-minute window.
 **Active Subscriber Count**
 : `waitbus_subscriber_count` (Gauge, direct value).
   Current number of connected subscribers. Displayed as a stat panel with colour
-  thresholds: green < 5, yellow 5–19, red >= 20. On a single workstation the
-  typical value is 1–3 (read-events, pr-monitor, mcp serve). A value of 0 during
+  thresholds: green < 5, yellow 5 to 19, red >= 20. On a single workstation the
+  typical value is 1 to 3 (read-events, pr-monitor, mcp serve). A value of 0 during
   normal operation means all consumers have disconnected; check each consumer's
   process state.
 
@@ -114,7 +114,7 @@ events per second smoothed over a 5-minute window.
 **Webhook Received Rate by Path**
 : `rate(waitbus_webhook_received_total[5m])` split by `path`.
   Deliveries arriving at `/webhook`, `/alertmanager`, and `/watchdog`. A drop to
-  zero during a known CI run means GitHub is not reaching the listener — check
+  zero during a known CI run means GitHub is not reaching the listener; check
   ngrok / proxy / firewall configuration.
 
 **HMAC Rejection Rate by Path and Reason**
@@ -144,7 +144,7 @@ events per second smoothed over a 5-minute window.
   The etag-poll timer fires every 45 seconds (systemd timer). Outcomes:
   - `started`: poller ran normally.
   - `no_repos_watched`: `watched_repos.txt` is empty; no polling attempted.
-  A zero rate here means the timer is not firing or the service has crashed — check
+  A zero rate here means the timer is not firing or the service has crashed; check
   `systemctl --user status waitbus-etag-poll.timer`.
 
 **ETag Poll Requests by HTTP Status**
@@ -174,7 +174,7 @@ events per second smoothed over a 5-minute window.
 : `histogram_quantile(0.99, ...)` over `waitbus_broadcast_send_seconds_bucket`.
   The p99 latency in isolation as a dedicated backpressure panel. Normal range:
   < 10 ms. A rising p99 that crosses 50 ms indicates the broadcast loop is under
-  load — correlate with the Watermark Replay rate and the Subscriber Count to
+  load; correlate with the Watermark Replay rate and the Subscriber Count to
   distinguish a slow subscriber from a replay-induced spike.
   Alert threshold suggestion: p99 > 100 ms for > 2 minutes.
 
@@ -184,11 +184,11 @@ events per second smoothed over a 5-minute window.
 
 The two primary backpressure indicators are:
 
-1. **Watermark replay rate** (Backpressure row, left panel) — measures reconnection
+1. **Watermark replay rate** (Backpressure row, left panel) measures reconnection
    frequency. Each reconnect with a `since` cursor triggers a replay walk. If
    subscribers are stable and connected, this is zero.
 
-2. **Broadcast send p99** (Backpressure row, right panel) — measures head-of-line
+2. **Broadcast send p99** (Backpressure row, right panel) measures head-of-line
    blocking in the fan-out loop. The loop is single-threaded asyncio; one slow
    subscriber stalls the send to all other subscribers until the slow send times out
    or the subscriber disconnects.
@@ -223,6 +223,6 @@ These are starting points; tune thresholds to your traffic volume.
 
 ## Related
 
-- `docs/ARCHITECTURE.md` — Runtime topology and observability endpoint description.
-- `SECURITY.md` — HMAC credential configuration and threat model.
-- `waitbus doctor` — CLI health check that validates the metrics endpoint is reachable.
+- `docs/ARCHITECTURE.md`: Runtime topology and observability endpoint description.
+- `SECURITY.md`: HMAC credential configuration and threat model.
+- `waitbus doctor`: CLI health check that validates the metrics endpoint is reachable.

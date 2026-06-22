@@ -42,7 +42,7 @@ Block until any source's event matches the predicate.
 | 1    | Matched a GitHub frame whose `conclusion` is terminal `failure` / `cancelled` / `timed_out`. |
 | 2    | Startup failure: daemon down, token required, bad `--repo`, malformed `--match`, expressive-evaluator extra not installed, or no predicate supplied. |
 | 124  | The overall `--timeout` elapsed with no match (coreutils `timeout` convention). |
-| 130  | SIGINT (Ctrl-C) — clean socket/cursor teardown, no spurious match (128 + SIGINT). |
+| 130  | SIGINT (Ctrl-C), with clean socket/cursor teardown and no spurious match (128 + SIGINT). |
 
 GitHub conclusions `skipped` / `neutral` / `action_required` / `stale` are non-terminal: the wait keeps streaming rather than exiting.
 
@@ -53,7 +53,7 @@ Block on a predicate (the same engine as `wait`), then run `<command>` on each m
 | Code | Condition |
 |------|-----------|
 | 0    | The command ran and exited 0. |
-| 1–125 | The command exited with this status — passed through unchanged ("the child said so"). |
+| 1-125 | The command exited with this status, passed through unchanged ("the child said so"). |
 | 2    | Startup failure (no predicate / bad args), **or** the command itself exited 2 (see the ambiguity note). |
 | 124  | The idle `--timeout` elapsed with no new match, **or** the command itself exited 124. |
 | 126  | The command was found but could not be executed (not executable / permission denied). |
@@ -61,7 +61,7 @@ Block on a predicate (the same engine as `wait`), then run `<command>` on each m
 | 128 + signum | The command was killed by a signal (e.g. SIGKILL → 137). |
 | 130  | SIGINT (Ctrl-C), after terminating any running command (128 + SIGINT). |
 
-**Ambiguity (documented, as GNU `timeout` documents its own):** codes 1–125 pass through unchanged, so a child that legitimately exits 2, 124, or 130 is indistinguishable from waitbus's own use of those codes. 126/127 always mean the command could not be exec'd; 128+ always means a signal. The contract: **1–125 = the child said so; 126/127 = exec failure; 128+ = signal.**
+**Ambiguity (documented, as GNU `timeout` documents its own):** codes 1-125 pass through unchanged, so a child that legitimately exits 2, 124, or 130 is indistinguishable from waitbus's own use of those codes. 126/127 always mean the command could not be exec'd; 128+ always means a signal. The contract: **1-125 = the child said so; 126/127 = exec failure; 128+ = signal.**
 
 ### `waitbus source verify <name>`
 
