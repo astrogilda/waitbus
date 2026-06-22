@@ -10,6 +10,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.1.6]
+
+### Changed
+
+- The MCP tool surface is refined for tool-biased clients. The three CI read
+  tools (`get_ci_status`, `list_failed_jobs`, `get_pr_aggregate`) are replaced
+  by a single `query_ci` tool with a required `view` selector
+  (`status`, `failed_jobs`, or `pr_aggregate`) and the same per-view
+  parameters. As a 0.x beta this is an intentional surface change; a client
+  that called the old tools now passes the matching `view` to `query_ci`.
+- The agent-to-agent messaging tools (`emit_agent_message`,
+  `read_agent_messages`) are now gated behind a `waitbus mcp serve`
+  `--enable-agent-messaging` flag. The flag defaults on, so existing setups
+  are unchanged; pass `--no-enable-agent-messaging` to hide the facet. Both
+  tool descriptions now state explicitly that they are for agent-to-agent
+  messages only, never for querying CI status or events.
+
+### Added
+
+- A `get_event` read tool that fetches one stored event by its ULID, giving a
+  tool-only client parity with the `waitbus://event/{ulid}` resource (events
+  were previously resource-only). Oversize payloads return the same truncation
+  marker with a `raw_uri` pointer to `waitbus://event/{ulid}/raw`.
+
+### Security
+
+- Attacker-controllable event fields returned by `get_event`, `tail_events`,
+  and `query_ci` (PR titles, commit messages, workflow and job names) are now
+  wrapped in explicit `<external_event_data>` delimiters so a consuming model
+  treats them as inert external data rather than instructions. The existing
+  control-character sanitisation still applies; waitbus-controlled metadata
+  (ids, enums, repo slug) is left unwrapped.
+
 ## [0.1.5]
 
 ### Added
