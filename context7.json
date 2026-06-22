@@ -1,0 +1,14 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "waitbus",
+  "description": "A workstation-local, cross-harness, same-UID event bus: wait on or broadcast events from CI, pytest, Docker, and the filesystem over a local socket, and let agents coordinate on the same bus. Python library plus MCP server plus CLI.",
+  "folders": ["docs"],
+  "excludeFolders": ["tests", "htmlcov"],
+  "rules": [
+    "waitbus is local-only over a same-UID AF_UNIX socket with SO_PEERCRED: no network transport, no cloud, no inter-agent confidentiality (agent names are self-asserted addresses, not credentials).",
+    "Primary surfaces: the waitbus CLI (waitbus wait, waitbus mcp serve, waitbus doctor), the MCP server (waitbus mcp serve, stdio), and the Python library (emit, subscribe, wait_for, request, respond).",
+    "The MCP server exposes read tools plus tail_events (a bounded long-poll) and agent messaging (emit_agent_message, read_agent_messages).",
+    "Install tool-isolated: uv tool install waitbus, or uvx --from waitbus.",
+    "docs/ does not ship in the wheel or sdist; in installed contexts use the GitHub URLs, not repo-relative docs/ paths."
+  ]
+}

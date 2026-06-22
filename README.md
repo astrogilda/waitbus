@@ -5,6 +5,8 @@
 [![CI](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml/badge.svg)](https://github.com/astrogilda/waitbus/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/astrogilda/waitbus)
+[![Context7](https://img.shields.io/badge/Context7-indexed-3b82f6)](https://context7.com/astrogilda/waitbus)
 
 **One `wait` verb that blocks on, and queries across, every local source at once. When any agent, CI job, test, or container on your machine finishes or fails, every other tool on the box hears it: your Claude Code, your Cursor, your scripts, your CI. Clients that support server notifications get a push; the rest get one blocking `waitbus wait`. No waitbus cloud, no account, no telemetry — all processing stays on your machine.**
 
