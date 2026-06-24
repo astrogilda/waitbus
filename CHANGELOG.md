@@ -10,6 +10,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.2.0](https://github.com/astrogilda/waitbus/compare/waitbus-v0.1.6...waitbus-v0.2.0) (2026-06-24)
+
+
+### Features
+
+* **mcp:** agent-to-agent messaging over MCP ([6e49efb](https://github.com/astrogilda/waitbus/commit/6e49efb47e00275c290573d503b212a593c4f618))
+* **mcp:** orient agents with server-level instructions ([a45cfe6](https://github.com/astrogilda/waitbus/commit/a45cfe6e7c2cca66093811888b2f13c0c220588b))
+* **mcp:** refine the MCP surface for tool-biased clients ([bdbc405](https://github.com/astrogilda/waitbus/commit/bdbc4056cd180b93730c41e1716cb3c3e815152d))
+
+
+### Bug Fixes
+
+* **api:** correct package docstring and expose __version__ ([caf99c8](https://github.com/astrogilda/waitbus/commit/caf99c86e0c38293b757d6e15a84a2151f4c74b2))
+* **install:** keep the daemons runnable under executable-stack interpreters ([f3d35d0](https://github.com/astrogilda/waitbus/commit/f3d35d043a572a863d824bc3e6bb8aa3691ee2d4))
+* **mcp:** conform the tool and notification surface to strict MCP clients ([3c29e19](https://github.com/astrogilda/waitbus/commit/3c29e195815fbb42118f1c92444fcfbd1f3a04de))
+
+
+### Documentation
+
+* add AGENTS.md, llms.txt, and an agent doc-QA loop ([b1d077d](https://github.com/astrogilda/waitbus/commit/b1d077daa2b3e1995e69324db661456e7460ea01))
+* add Context7/DeepWiki indexing and copy-edit prose ([d45e365](https://github.com/astrogilda/waitbus/commit/d45e3652f21f1c7e53b34ed64537284e518ed78c))
+* **code:** repoint stale doc pointers and add usage examples ([a69f646](https://github.com/astrogilda/waitbus/commit/a69f646873a60403719a668bcf4c27cf7cd33190))
+* **examples:** correct the waitbus repository URL in example READMEs ([b865c7c](https://github.com/astrogilda/waitbus/commit/b865c7c8ef874004a15f6a988d400eef85781504))
+* **mcp:** describe output schema fields and add input examples ([0a170db](https://github.com/astrogilda/waitbus/commit/0a170dbb646de2a4519af4c56ddfbf1ce920998e))
+* **messaging:** add public agent-messaging guide and examples ([77e8e31](https://github.com/astrogilda/waitbus/commit/77e8e3153b195b1acb71eeed7dd49de90b908d2e))
+* **readme:** point at the live MCP specification URL ([bb5a897](https://github.com/astrogilda/waitbus/commit/bb5a89710656bca46f1a50a87ac88a8bfec7c7c8))
+* **skill:** link the agent-messaging guide by relative path ([68d3420](https://github.com/astrogilda/waitbus/commit/68d34205dd499c227641677a5f7900c09f10d7d8))
+* tighten agent-facing wording and headings ([eddb283](https://github.com/astrogilda/waitbus/commit/eddb283e2c8cb50c399a6bc2c2e557eb6f26c369))
+
 ## [0.1.6]
 
 ### Changed
