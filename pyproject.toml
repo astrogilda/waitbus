@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "waitbus"
-version = "0.1.6"
+version = "0.2.0"
 description = "Workstation-local event bus and blocking wait/emit primitive: let any agent or script wait on or emit CI, pytest, Docker, and filesystem events without polling. GitHub Actions is source #1."
 readme = "README.md"
 requires-python = ">=3.11"
