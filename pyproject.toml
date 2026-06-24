@@ -45,7 +45,7 @@ dependencies = [
   # / refactor 0a22a9d). When that release lands on PyPI, bump this pin
   # (e.g. `mcp>=1.28,<2.0`) and delete the WaitbusServer subclass in
   # waitbus/mcp.py (see the docstring there for removal criteria).
-  "mcp>=1.27.1,<1.28",
+  "mcp>=1.27.1,<1.29",
   "msgspec>=0.19,<1.0",
   "platformdirs>=4.9,<5.0",
   "prometheus_client>=0.20,<1.0",

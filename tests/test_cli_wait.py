@@ -17,8 +17,7 @@ import time
 from pathlib import Path
 
 import pytest
-from click.testing import Result
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from tests._daemon_helpers import await_subscribers
 from waitbus import _broadcast_sub, broadcast
