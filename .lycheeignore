@@ -19,6 +19,12 @@
 # GitHub repo settings pages require auth and 302 to login for a CI runner.
 ^https?://github\.com/[^/]+/[^/]+/settings
 
+# --- Release-please CHANGELOG compare links (tag does not exist until release) ---
+# Each release PR's CHANGELOG adds a compare link to the version tag the merge
+# will create, so it is necessarily 404 while the PR is open. The tag (and link)
+# become valid the moment the release is cut.
+^https?://github\.com/[^/]+/[^/]+/compare/[^/]+-v[0-9]
+
 # --- Template / placeholder URLs (unresolved substitution tokens in docs) ---
 # GitHub Actions expression placeholders, e.g. https://github.com/${{ ... }}.
 \$\{\{
