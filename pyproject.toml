@@ -308,6 +308,11 @@ ignore = [
   "server.json",
   "pyrightconfig.json",
   "context7.json",
+  # release-please automated-release config + version manifest; root-level
+  # tooling config, not a runtime asset (consistent with the other root
+  # JSON config above).
+  "release-please-config.json",
+  ".release-please-manifest.json",
   # Out-of-sdist top-level trees.
   ".claude-plugin/**",
   ".github/**",
