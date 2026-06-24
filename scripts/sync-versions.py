@@ -22,6 +22,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 _SUMMARY = "Propagate the canonical waitbus version across all manifests."
 
@@ -32,7 +33,7 @@ SERVER_JSON = ROOT / "server.json"
 UV_LOCK = ROOT / "uv.lock"
 
 
-def _pyproject() -> dict:
+def _pyproject() -> dict[str, Any]:
     with PYPROJECT.open("rb") as f:
         return tomllib.load(f)
 
