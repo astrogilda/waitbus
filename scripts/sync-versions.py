@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 _SUMMARY = "Propagate the canonical waitbus version across all manifests."
 
@@ -28,13 +30,31 @@ ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 PLUGIN_JSON = ROOT / ".claude-plugin" / "plugin.json"
 SERVER_JSON = ROOT / "server.json"
+UV_LOCK = ROOT / "uv.lock"
+
+
+def _pyproject() -> dict[str, Any]:
+    with PYPROJECT.open("rb") as f:
+        return tomllib.load(f)
 
 
 def canonical_version() -> str:
     """Read [project].version from pyproject.toml."""
-    with PYPROJECT.open("rb") as f:
-        data = tomllib.load(f)
-    return str(data["project"]["version"])
+    return str(_pyproject()["project"]["version"])
+
+
+def package_name() -> str:
+    """Read [project].name from pyproject.toml."""
+    return str(_pyproject()["project"]["name"])
+
+
+def _uv_lock_self_version_match(text: str, name: str) -> re.Match[str] | None:
+    """Locate the editable self-package's version line in uv.lock.
+
+    Matches the project's own ``[[package]]`` entry (``name`` then ``version``),
+    not the ``{ name = ... }`` dependency references elsewhere in the lock.
+    """
+    return re.search(rf'(?m)^name = "{re.escape(name)}"\nversion = "([^"]+)"', text)
 
 
 def main() -> int:
@@ -63,6 +83,16 @@ def main() -> int:
             for pkg in s.get("packages", []):
                 pkg["version"] = v
             SERVER_JSON.write_text(json.dumps(s, indent=2) + "\n")
+
+    # uv.lock carries the project's own version in its editable self-package entry.
+    # release-please bumps pyproject but not the lock, so guard it here too.
+    if UV_LOCK.exists():
+        lock_text = UV_LOCK.read_text()
+        m = _uv_lock_self_version_match(lock_text, package_name())
+        if m is not None and m.group(1) != v:
+            diverged.append((UV_LOCK, m.group(1)))
+            if not args.check:
+                UV_LOCK.write_text(lock_text[: m.start(1)] + v + lock_text[m.end(1) :])
 
     if args.check and diverged:
         sys.stderr.write(f"Version drift detected (canonical = {v}):\n")
