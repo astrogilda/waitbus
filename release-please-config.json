@@ -21,7 +21,8 @@
           "path": "server.json",
           "jsonpath": "$.packages[0].version"
         }
-      ]
+      ],
+      "include-component-in-tag": false
     }
   }
 }
