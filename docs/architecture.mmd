@@ -1,0 +1,28 @@
+%%{init: {'theme':'neutral','themeVariables':{'fontSize':'16px','fontFamily':'sans-serif'},'flowchart':{'nodeSpacing':28,'rankSpacing':46,'padding':14}}}%%
+flowchart TB
+    WH["<b>Webhooks</b><br/>GitHub · Alertmanager"]
+    IP["<b>In-process</b><br/>pytest · docker · fs<br/>agents · plugins"]
+    LS["<b>listener serve</b><br/>HMAC verify · etag-poll"]
+    DB[("<b>SQLite event store</b><br/>seq PK<br/><code>INSERT&nbsp;OR&nbsp;IGNORE</code>")]
+    BD["<b>broadcast daemon</b><br/>AF_UNIX&nbsp;fan-out<br/>doorbell&nbsp;wake · length-prefixed&nbsp;frames"]
+    CLI["<b>CLI</b><br/><code>wait · on · top · read-events</code>"]
+    MCP["<b>MCP server</b><br/><code>mcp serve</code>"]
+    SDK["<b>Python SDK</b><br/><code>subscribe · wait_for</code>"]
+
+    WH -->|webhook| LS --> DB
+    IP -->|emit| DB
+    DB -->|doorbell| BD
+    BD --> CLI
+    BD --> MCP
+    BD --> SDK
+    CLI -.->|since= replay| BD
+    SDK -.->|since= replay| BD
+
+    classDef src fill:#ffffff,stroke:#5a6672,stroke-width:1.5px,color:#1a1a1a
+    classDef store fill:#f3ecdc,stroke:#a9772f,stroke-width:2px,color:#1a1a1a
+    classDef core fill:#dbe7f3,stroke:#2f6690,stroke-width:2.5px,color:#1a1a1a
+    classDef sink fill:#f4f6f8,stroke:#3d4752,stroke-width:1.5px,color:#1a1a1a
+    class WH,IP,LS src
+    class DB store
+    class BD core
+    class CLI,MCP,SDK sink

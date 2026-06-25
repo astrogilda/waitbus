@@ -34,3 +34,8 @@
 <[A-Za-z]
 # Brace placeholders for runtime-substituted values, e.g. http://127.0.0.1:{port}/metrics.
 \{[A-Za-z]
+
+# --- Self raw-main asset referenced by the README (valid only after merge) ---
+# README points at docs/architecture.png via an absolute raw URL so the diagram
+# renders on PyPI; on a PR that URL 404s until the image lands on main.
+^https?://raw\.githubusercontent\.com/[^/]+/waitbus/main/docs/architecture\.png

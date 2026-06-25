@@ -170,36 +170,9 @@ fans every one of those events out to every other tool on the box.
 
 ## Architecture
 
-```mermaid
-%%{init: {'theme':'neutral','themeVariables':{'fontSize':'16px','fontFamily':'sans-serif'},'flowchart':{'nodeSpacing':28,'rankSpacing':46,'padding':14}}}%%
-flowchart TB
-    WH["<b>Webhooks</b><br/>GitHub · Alertmanager"]
-    IP["<b>In-process</b><br/>pytest · docker · fs<br/>agents · plugins"]
-    LS["<b>listener serve</b><br/>HMAC verify · etag-poll"]
-    DB[("<b>SQLite event store</b><br/>seq PK<br/><code>INSERT&nbsp;OR&nbsp;IGNORE</code>")]
-    BD["<b>broadcast daemon</b><br/>AF_UNIX&nbsp;fan-out<br/>doorbell&nbsp;wake · length-prefixed&nbsp;frames"]
-    CLI["<b>CLI</b><br/><code>wait · on · top · read-events</code>"]
-    MCP["<b>MCP server</b><br/><code>mcp serve</code>"]
-    SDK["<b>Python SDK</b><br/><code>subscribe · wait_for</code>"]
+[![waitbus architecture: webhook and in-process sources write to a SQLite event store; a broadcast daemon fans each row out to the CLI, MCP server, and Python SDK, which can replay with since=](https://raw.githubusercontent.com/astrogilda/waitbus/main/docs/architecture.png)](docs/architecture.mmd)
 
-    WH -->|webhook| LS --> DB
-    IP -->|emit| DB
-    DB -->|doorbell| BD
-    BD --> CLI
-    BD --> MCP
-    BD --> SDK
-    CLI -.->|since= replay| BD
-    SDK -.->|since= replay| BD
-
-    classDef src fill:#ffffff,stroke:#5a6672,stroke-width:1.5px,color:#1a1a1a
-    classDef store fill:#f3ecdc,stroke:#a9772f,stroke-width:2px,color:#1a1a1a
-    classDef core fill:#dbe7f3,stroke:#2f6690,stroke-width:2.5px,color:#1a1a1a
-    classDef sink fill:#f4f6f8,stroke:#3d4752,stroke-width:1.5px,color:#1a1a1a
-    class WH,IP,LS src
-    class DB store
-    class BD core
-    class CLI,MCP,SDK sink
-```
+<sub>Rendered from [`docs/architecture.mmd`](docs/architecture.mmd) (a static image is used so the diagram renders on PyPI and other non-Mermaid surfaces, not only on GitHub). Regenerate with `mmdc -i docs/architecture.mmd -o docs/architecture.png`.</sub>
 
 Two ingress classes land events in the same store: **remote** webhooks (GitHub,
 Alertmanager) arrive over HTTPS and pass through `waitbus listener serve`, while
