@@ -18,6 +18,7 @@ jobs:
   # still trigger the test matrix as a rehearsal but skip every publish
   # job so PyPI version slots are not burned on dry runs.
   gate:
+    name: Classify the tag (release vs pre-release)
     runs-on: ubuntu-latest
     outputs:
       is_release: ${{ steps.check.outputs.is_release }}
@@ -68,7 +69,8 @@ jobs:
       - name: Restore uv venv cache
         # Test-job-only cache: the published artifacts are built in the
         # separate `build` job, which does not restore this cache.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 # zizmor: ignore[cache-poisoning]
+        # zizmor: ignore[cache-poisoning]
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .venv
           key: uv-venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
@@ -86,7 +88,8 @@ jobs:
       - name: Restore prek hook cache
         # Test-job-only cache: pre-commit hook environments, never part of
         # the built distributions.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 # zizmor: ignore[cache-poisoning]
+        # zizmor: ignore[cache-poisoning]
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/prek
           key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -247,9 +250,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
-      id-token: write
-      attestations: write
-      contents: read
+      id-token: write        # OIDC trusted publishing to TestPyPI
+      attestations: write    # PEP 740 publish attestations
+      contents: read         # checkout only
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -275,9 +278,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      id-token: write
-      attestations: write
-      contents: write
+      id-token: write        # OIDC trusted publishing to PyPI + sigstore
+      attestations: write    # PEP 740 / SBOM attestations
+      contents: write        # sigstore bundle upload alongside the release
 
     steps:
       - name: Guard against wrong-tag prefix
@@ -354,8 +357,8 @@ jobs:
     if: needs.gate.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      id-token: write        # GitHub OIDC login to the MCP Registry
+      contents: read         # checkout only
 
     steps:
       - name: Guard against wrong-tag prefix
@@ -398,9 +401,9 @@ jobs:
     if: needs.gate.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: write        # create the GitHub Release + upload assets
+      id-token: write        # sigstore signing for the plugin attestation
+      attestations: write    # plugin .zip build provenance
 
     steps:
       - name: Guard against wrong-tag prefix
@@ -418,12 +421,14 @@ jobs:
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
+        env:
+          REPO: ${{ github.repository }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           # Extract the section matching this version from CHANGELOG.md
           NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
           if [ -z "$NOTES" ]; then
-            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+            NOTES="See [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md) for details."
           fi
           # Write to file to preserve newlines
           echo "$NOTES" > /tmp/release-notes.md
@@ -454,7 +459,8 @@ jobs:
       - name: Create GitHub Release
         # Kept over a `gh release` script: body_path + fail_on_unmatched_files
         # behavior is relied on; rewriting is out of scope for a security pass.
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1 # zizmor: ignore[superfluous-actions]
+        # zizmor: ignore[superfluous-actions]
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           body_path: /tmp/release-notes.md
           files: ${{ env.ZIP_PATH }}
