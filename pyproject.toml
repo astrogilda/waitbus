@@ -683,4 +683,4 @@ ignore_names = [
 # Pin the uv toolchain: CI's astral-sh/setup-uv reads this instead of
 # installing whatever the latest release is, so local and CI resolve
 # with the same uv version.
-required-version = "==0.11.28"
+required-version = "==0.10.8"
