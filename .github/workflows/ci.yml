@@ -328,10 +328,14 @@ jobs:
           version: "0.10.8" # pin: uv 0.11.x prunes dev tools out of the venv on `uv run`
 
       - name: Sync adapter environment
-        run: uv sync --directory "adapters/${{ matrix.adapter }}" --all-groups
+        env:
+          ADAPTER: ${{ matrix.adapter }}
+        run: uv sync --directory "adapters/$ADAPTER" --all-groups
 
       - name: Run adapter test suite
-        run: uv run --directory "adapters/${{ matrix.adapter }}" python -m pytest -vv
+        env:
+          ADAPTER: ${{ matrix.adapter }}
+        run: uv run --directory "adapters/$ADAPTER" python -m pytest -vv
 
   reproducibility:
     # Mirror the release.yml `reproducibility-check` job at PR time so
@@ -431,7 +435,9 @@ jobs:
         # project's normal range is `mcp>=1.27.1,<1.28`; this step
         # overrides that for the canary matrix only (the venv is
         # discarded at job end).
-        run: uv pip install --reinstall "mcp==${{ matrix.mcp-version }}"
+        env:
+          MCP_VERSION: ${{ matrix.mcp-version }}
+        run: uv pip install --reinstall "mcp==$MCP_VERSION"
 
       - name: MCP wire tests under canary version
         # Tier 1 (regression vs `_mcp_wire.py` baseline) + Tier 2

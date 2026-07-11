@@ -15,14 +15,23 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: write
+# Serialize runs so two main pushes never race on the same release PR;
+# no cancel-in-progress because interrupting a release PR update midway
+# can leave the PR and manifest out of sync.
+concurrency:
+  group: release-please-${{ github.ref }}
+
+permissions: {}
 
 jobs:
   release-please:
     name: Maintain the release pull request
     runs-on: ubuntu-latest
+    permissions:
+      # release-please needs both writes by design: it pushes the release
+      # branch/tag and maintains the rolling release pull request.
+      contents: write # zizmor: ignore[excessive-permissions] required to create the release branch and tag
+      pull-requests: write # zizmor: ignore[excessive-permissions] required to open and update the release PR
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:

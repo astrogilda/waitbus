@@ -33,6 +33,10 @@ on:
   release:
     types: [published]
 
+concurrency:
+  group: stress-gate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   per-push:
     if: github.event_name != 'release'
@@ -63,8 +67,8 @@ jobs:
             --sweep "1" \
             --duration "5s" \
             --signals "curve" \
-            --output "${{ github.workspace }}/stress-verdict.json" \
-            --progress "${{ github.workspace }}/stress-progress.jsonl"
+            --output "$GITHUB_WORKSPACE/stress-verdict.json" \
+            --progress "$GITHUB_WORKSPACE/stress-progress.jsonl"
 
       - name: Upload verdict + progress
         if: always()
@@ -101,8 +105,8 @@ jobs:
             --sweep "1,2,4,8,16,32,64" \
             --duration "60s" \
             --signals "curve,zero_poll" \
-            --output "${{ github.workspace }}/stress-verdict.json" \
-            --progress "${{ github.workspace }}/stress-progress.jsonl"
+            --output "$GITHUB_WORKSPACE/stress-verdict.json" \
+            --progress "$GITHUB_WORKSPACE/stress-progress.jsonl"
 
       - name: Upload verdict + progress
         if: always()
@@ -150,8 +154,8 @@ jobs:
             --real \
             --sweep "5,10" \
             --duration "60s" \
-            --output "${{ github.workspace }}/stress-real-verdict.json" \
-            --progress "${{ github.workspace }}/stress-real-progress.jsonl"
+            --output "$GITHUB_WORKSPACE/stress-real-verdict.json" \
+            --progress "$GITHUB_WORKSPACE/stress-real-progress.jsonl"
 
       - name: Upload real verdict + progress
         if: always()

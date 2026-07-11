@@ -52,9 +52,12 @@ jobs:
 
       - name: Collect the markdown files this PR touched
         id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          base='${{ github.event.pull_request.base.sha }}'
-          head='${{ github.event.pull_request.head.sha }}'
+          base="$BASE_SHA"
+          head="$HEAD_SHA"
           # Three-dot diff = the merge-base..head changes (the files THIS PR
           # touched), not base-branch advances since the fork. --diff-filter=d
           # drops deleted files. ./-prefix each path so a filename beginning

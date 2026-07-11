@@ -26,6 +26,7 @@ permissions:
 
 jobs:
   smoke:
+    name: Dogfood waitbus wait smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
