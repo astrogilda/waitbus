@@ -10,6 +10,11 @@ name: stress-gate
 #             the published verdict is the comparison target for the next
 #             release's regression-tolerance check.
 
+# Jobs only read the repo and upload artifacts (artifact upload needs no
+# token permission), so contents: read covers everything.
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -36,9 +41,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          # This workflow runs on release/tag events; a poisoned cache could
+          # taint published artifacts, so caching stays off (zizmor cache-poisoning).
+          enable-cache: false
 
       - name: Install waitbus[stress]
         run: uv sync --extra stress
@@ -71,9 +82,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          # This workflow runs on release/tag events; a poisoned cache could
+          # taint published artifacts, so caching stays off (zizmor cache-poisoning).
+          enable-cache: false
 
       - name: Install waitbus[stress]
         run: uv sync --extra stress
@@ -106,17 +123,26 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          # This workflow runs on release/tag events; a poisoned cache could
+          # taint published artifacts, so caching stays off (zizmor cache-poisoning).
+          enable-cache: false
 
       - name: Install waitbus[stress]
         run: uv sync --extra stress
 
       - name: Install claude + gemini CLIs
+        # Exact-version pinned installs of two release-only CLI tools; the
+        # repo has no npm lockfile to anchor them to.
+        # zizmor: ignore[adhoc-packages]
         run: |
-          npm install -g @anthropic-ai/claude-code
-          npm install -g @google/gemini-cli
+          npm install -g @anthropic-ai/claude-code@2.1.207
+          npm install -g @google/gemini-cli@0.50.0
 
       - name: Run waitbus stress --real (5,10 sweep, 60 s per N)
         run: |

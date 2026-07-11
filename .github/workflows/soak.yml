@@ -43,17 +43,23 @@ jobs:
     timeout-minutes: 360  # 6h: GitHub-hosted runner per-job hard cap. 24h+ runs go via scripts/run_soak_on_hetzner.sh.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Set up waitbus environment
         uses: ./.github/actions/setup-waitbus-env
         with:
           python-version: "3.13"
           sync-args: "--all-extras"
       - name: Run soak
+        env:
+          SOAK_DURATION: ${{ inputs.duration }}
+          SOAK_RATE: ${{ inputs.rate }}
+          SOAK_INJECT_SUSPEND_CYCLES: ${{ inputs.inject_suspend_cycles }}
         run: |
           uv run python -m scripts.soak \
-            --duration "${{ inputs.duration }}" \
-            --rate "${{ inputs.rate }}" \
-            --inject-suspend-cycles "${{ inputs.inject_suspend_cycles }}" \
+            --duration "$SOAK_DURATION" \
+            --rate "$SOAK_RATE" \
+            --inject-suspend-cycles "$SOAK_INJECT_SUSPEND_CYCLES" \
             --output soak-verdict.json
       - name: Upload soak verdict
         if: always()

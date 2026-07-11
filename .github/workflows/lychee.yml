@@ -48,6 +48,7 @@ jobs:
         with:
           # Full history so the PR's base..head markdown diff resolves.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Collect the markdown files this PR touched
         id: changed
@@ -90,6 +91,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Run lychee over the documentation surface (report-only)
         continue-on-error: true
