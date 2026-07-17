@@ -30,11 +30,13 @@ B in process Y".
 - The failure event is **injected**: the failing worker does not crash a real
   build; it deterministically emits one `agent_task_failed` event so the demo is
   reproducible. The orchestrator banner names every agent process's PID.
-- The `agent` source is a **demo convention**, not a committed waitbus product
-  source. It is registered **in-process** (for the demo daemon and the emitting
-  worker only) -- never added to the built-in source taxonomy and never shipped
-  as a `waitbus.sources.v1` plugin. A dedicated agent-coordination source and
-  event types may be added in a future release.
+- The `agent` source is a **first-class built-in** waitbus source. It owns the
+  `agent_message`, `agent_claim`, and `agent_task_failed` event types in the
+  built-in source taxonomy (see `waitbus/sources/_registry.py`). The failing
+  worker simply `emit()`s an `agent_task_failed` against it -- there is **no
+  in-process registration step**, because the daemon's `event_types_supported()`
+  already knows the type. (A taxonomy entry is a validation entry only; it
+  starts no daemon-resident watcher, so the daemon footprint is unchanged.)
 
 ## Run it
 
