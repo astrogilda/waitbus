@@ -107,8 +107,21 @@ jobs:
         run: bash benchmarks/setup/pin_nats_image.sh
       - name: Full bench run (default N)
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p benchmarks/results
+          # Per-bench wall-clock cap. 16 benches x 10 min = 160 min worst case,
+          # which stays under this job's timeout-minutes, so the loop always
+          # finishes and the "Upload bench results" step (if: always()) always
+          # lands whatever completed. That is the fix for the old failure mode:
+          # a single serial run under one job cap, where one slow/hanging bench
+          # silently consumed the whole 3h budget, got cancelled, and uploaded
+          # nothing. A bench that trips its cap (exit 124) or errors is recorded
+          # and skipped; the rest still run. The FIRST nightly under this shape
+          # is diagnostic -- if exactly one bench shows exit 124 it was a single
+          # hang; if many run long it is genuine total size -- then right-size
+          # PER_BENCH_TIMEOUT or shard the list across a matrix from evidence.
+          PER_BENCH_TIMEOUT=600
+          failed=""
           for bench in \
               bench_notify_to_wake \
               bench_predicate_eval_latency_multi \
@@ -127,12 +140,25 @@ jobs:
               bench_throughput \
               bench_tokens_saved; do
             echo "::group::$bench (full)"
-            uv run python -m benchmarks.$bench
+            if timeout "${PER_BENCH_TIMEOUT}" uv run python -m benchmarks."$bench"; then
+              echo "$bench: ok"
+            else
+              rc=$?
+              echo "::warning title=bench overran or failed::$bench exited $rc (124 means it hit the ${PER_BENCH_TIMEOUT}s cap); continuing with the rest"
+              failed="$failed $bench"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$failed" ]; then
+            echo "::warning title=benches with non-zero exit::$failed"
+          fi
       - name: Upload bench results
+        # Always upload, even if a bench above overran or failed, so a partial
+        # nightly still produces artifacts instead of the old upload-nothing run.
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-results-${{ github.run_id }}
           path: benchmarks/results/
           retention-days: 30
+          if-no-files-found: warn
