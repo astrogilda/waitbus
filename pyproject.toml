@@ -680,7 +680,11 @@ ignore_names = [
 ]
 
 [tool.uv]
-# Pin the uv toolchain: CI's astral-sh/setup-uv reads this instead of
-# installing whatever the latest release is, so local and CI resolve
-# with the same uv version.
-required-version = "==0.10.8"
+# Minimum uv version floor (not an exact pin). CI pins uv explicitly via the
+# setup-uv action's `version:` field (see
+# .github/actions/setup-waitbus-env/action.yml and .github/workflows/ci.yml),
+# so CI byte-reproducibility does NOT depend on this line. Keeping a floor
+# rather than an exact-equality pin lets `uv sync` / `uv run` work on any
+# modern uv a contributor already has installed (fresh installs are 0.11.x),
+# instead of failing outright with a version-mismatch error before anything runs.
+required-version = ">=0.10.8"
