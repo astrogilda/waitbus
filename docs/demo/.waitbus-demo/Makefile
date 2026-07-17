@@ -1,4 +1,4 @@
-.PHONY: demo demo-check font-check hero hero-check hero-smoke clean
+.PHONY: demo demo-check font-check waitbus-check hero hero-check hero-smoke clean
 
 VHS_MIN_VERSION := 0.10.0
 VHS_BIN := vhs
@@ -11,8 +11,22 @@ DEMO_FONT := JetBrains Mono
 # The checks below guard against silent format drift across VHS
 # versions and against a missing render font (the two ways a render
 # silently produces a bad artefact).
-demo: demo-check font-check
+demo: demo-check font-check waitbus-check
 	$(VHS_BIN) demo.tape
+
+# Refuse to render when `waitbus` does not resolve on PATH. demo.tape types
+# `waitbus demo` inside VHS; if the binary is missing, VHS silently records a
+# "command not found" frame and ships a broken GIF -- the same silent-bad-render
+# failure the VHS-version and render-font guards exist to prevent. (`hero` gets
+# this coverage through hero-smoke, which actually runs the orchestrator; the
+# `demo` target had no equivalent PATH check until now.)
+waitbus-check:
+	@command -v waitbus >/dev/null 2>&1 || { \
+		echo "error: waitbus is not on PATH; refusing to render (VHS would record a 'command not found' GIF)."; \
+		echo "install it (e.g. 'uv tool install waitbus') or activate the venv that provides it, then retry."; \
+		exit 1; \
+	}
+	@echo "waitbus: $$(command -v waitbus)"
 
 # Version-check the installed VHS binary. Enforces a hard floor at
 # VHS_MIN_VERSION via lexicographic compare under sort -V: if the
