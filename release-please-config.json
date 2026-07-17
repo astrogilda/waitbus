@@ -20,6 +20,10 @@
           "type": "json",
           "path": "server.json",
           "jsonpath": "$.packages[0].version"
+        },
+        {
+          "type": "generic",
+          "path": "CITATION.cff"
         }
       ],
       "include-component-in-tag": false

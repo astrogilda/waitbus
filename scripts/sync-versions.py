@@ -5,6 +5,8 @@ Canonical source: pyproject.toml [project].version.
 Targets:
   - .claude-plugin/plugin.json (top-level Claude Code plugin manifest)
   - server.json (MCP Registry server manifest, including packages[].version)
+  - uv.lock (the editable self-package's own version entry)
+  - CITATION.cff (the `version:` line GitHub reads for "Cite this repository")
 
 Usage:
   scripts/sync-versions.py          # propagate (mutates files; exit 0)
@@ -31,6 +33,7 @@ PYPROJECT = ROOT / "pyproject.toml"
 PLUGIN_JSON = ROOT / ".claude-plugin" / "plugin.json"
 SERVER_JSON = ROOT / "server.json"
 UV_LOCK = ROOT / "uv.lock"
+CITATION_CFF = ROOT / "CITATION.cff"
 
 
 def _pyproject() -> dict[str, Any]:
@@ -93,6 +96,19 @@ def main() -> int:
             diverged.append((UV_LOCK, m.group(1)))
             if not args.check:
                 UV_LOCK.write_text(lock_text[: m.start(1)] + v + lock_text[m.end(1) :])
+
+    # CITATION.cff carries the version on a top-level `version:` line (the one
+    # GitHub's "Cite this repository" reads). release-please's generic updater
+    # bumps it on release via the `# x-release-please-version` annotation; this
+    # guard trips CI if it ever drifts from pyproject between releases. The
+    # trailing-group capture preserves any inline annotation comment.
+    if CITATION_CFF.exists():
+        cff_text = CITATION_CFF.read_text()
+        m = re.search(r"(?m)^version:[ \t]*(\S+)", cff_text)
+        if m is not None and m.group(1) != v:
+            diverged.append((CITATION_CFF, m.group(1)))
+            if not args.check:
+                CITATION_CFF.write_text(cff_text[: m.start(1)] + v + cff_text[m.end(1) :])
 
     if args.check and diverged:
         sys.stderr.write(f"Version drift detected (canonical = {v}):\n")

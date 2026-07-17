@@ -14,4 +14,5 @@ authors:
 repository-code: "https://github.com/astrogilda/waitbus"
 url: "https://github.com/astrogilda/waitbus"
 license: MIT
-version: 0.1.5
+version: 0.2.0 # x-release-please-version
+date-released: 2026-06-24
