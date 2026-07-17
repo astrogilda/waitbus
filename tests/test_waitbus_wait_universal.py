@@ -172,7 +172,7 @@ async def test_fs_match_resolves_exit_zero(
 # --- repo / detect_repo relaxation ------------------------------------------
 
 
-def test_non_github_source_does_not_call_detect_repo() -> None:
+def test_non_github_source_does_not_call_detect_repo(serve_dirs: dict[str, Path]) -> None:
     """`--source docker` (no --repo) must NOT consult detect_repo() --
     that was the third leg of the GitHub-only triple lockout."""
     called = {"n": 0}
@@ -181,9 +181,11 @@ def test_non_github_source_does_not_call_detect_repo() -> None:
         called["n"] += 1
         return None
 
-    # We don't need the daemon for this -- the wait should fail at the
-    # open_subscriber step (no daemon running), but detect_repo() must
-    # have already been skipped before then.
+    # `serve_dirs` isolates WAITBUS_RUNTIME_DIR to an empty per-test dir so no
+    # daemon socket exists: the wait fails cleanly at the open_subscriber step
+    # (startup exit 2), NOT against whatever daemon the host happens to be
+    # running at the default socket. detect_repo() must have already been
+    # skipped before that failure.
     with patch.object(wait, "detect_repo", fake_detect_repo):
         rc = wait.main(
             [
@@ -202,9 +204,15 @@ def test_non_github_source_does_not_call_detect_repo() -> None:
 
 
 def test_repo_with_non_github_source_warns_and_ignores(
+    serve_dirs: dict[str, Path],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`--source docker --repo o/r`: --repo is ignored with a stderr note."""
+    """`--source docker --repo o/r`: --repo is ignored with a stderr note.
+
+    `serve_dirs` isolates WAITBUS_RUNTIME_DIR to an empty per-test dir so the
+    wait fails cleanly at open_subscriber (startup exit 2) rather than hitting a
+    daemon the host happens to be running at the default socket.
+    """
     rc = wait.main(
         [
             "--source",
