@@ -14,7 +14,9 @@ Below: a **Pydantic AI** agent and a **LangGraph** agent, two *different* framew
 
 ![waitbus cross-harness demo: two different agent frameworks on one local bus; one agent fails and the peer reacts](docs/demo/.waitbus-demo/hero.gif)
 
-<sub>Real frameworks and real waitbus subscribe/emit; the agents' LLMs are deterministic fakes and the failure is an injected event, so the clip runs fully offline. Reproduce with <code>make hero</code>; higher-quality MP4 at <a href="docs/demo/.waitbus-demo/hero.mp4"><code>hero.mp4</code></a>. For a gentler start, see the single-agent <code>waitbus demo</code> in <a href="#try-it-in-60-seconds">Try it in 60 seconds</a>.</sub>
+<sub>Real frameworks and real waitbus subscribe/emit; the agents' LLMs are deterministic fakes and the failure is an injected event, so the clip runs fully offline. <strong>Reproduce the claim</strong> (not just the recording): run <code>uvx waitbus demo</code> for the gentler single-agent walk-through -- no clone, no install -- or, for the exact two-framework proof shown above, clone the repo and run <code>uv run --group agent-recipes python -m examples.hero_swarm</code> (Linux-verified; prints <code>PROVEN: two DIFFERENT frameworks woke on ONE peer's failure</code>). Higher-quality MP4 at <a href="docs/demo/.waitbus-demo/hero.mp4"><code>hero.mp4</code></a>. <em>Maintainers re-render this recording from <code>docs/demo/.waitbus-demo/</code> with <code>make hero</code> (dev-only; needs vhs, ttyd, tmux, and JetBrains Mono).</em></sub>
+
+> **Try it now, no install:** `uvx waitbus demo` -- boots a real local bus and returns the instant an event lands, fully offline (~8 s).
 
 ---
 
@@ -128,9 +130,42 @@ semantics.
 
 ## Quick start
 
+**Prove the primitive in ~10 seconds** -- one foreground daemon, one event, no
+service install. Install the CLI and bootstrap state:
+
 ```bash
-uv tool install waitbus          # install the package
-waitbus init                     # one-time setup: state dirs, SQLite schema, scaffold files
+uv tool install waitbus          # or: pipx install waitbus
+waitbus init                     # one-time setup: state dirs, SQLite schema, scaffolds
+```
+
+Then, in two terminals, watch a blocking `wait` return the instant an `emit`
+lands on the bus:
+
+```bash
+# Terminal A -- run the broadcast daemon in the foreground (Ctrl-C to stop):
+waitbus broadcast serve
+```
+
+```bash
+# Terminal B -- block on the next agent event, then emit one from the same shell:
+waitbus wait --source agent --match 'fields.event_type="agent_message"' --timeout 30s &
+sleep 1   # let the backgrounded wait attach to the bus before we emit (a
+          # long-lived subscriber would already be attached; this one-liner
+          # just compresses "wait, then something happens" into one shell)
+waitbus emit \
+  --delivery-id demo-1 --source agent --event-type agent_message \
+  --owner local --repo local --received-at "$(date +%s)" \
+  --payload-json '{"hello":"world"}' --ingest-method manual
+wait   # the backgrounded `waitbus wait` prints "matched on source=agent" and exits 0
+```
+
+That round trip -- block, emit, unblock, with zero polling -- is the whole
+primitive. Everything below wires it to real sources and, optionally, runs the
+daemons permanently under your service manager.
+
+### Run the fleet permanently (optional)
+
+```bash
 waitbus install-credentials github-webhook-secret   # optional: only for GitHub-CI waiting (enables the webhook listener)
 waitbus install-systemd          # Linux: copy + enable the 8 systemd-user units
 waitbus install-launchd          # macOS: copy + bootstrap the 4 LaunchAgent plists
@@ -143,16 +178,24 @@ right one.
 
 Once events are flowing, block any script or agent on the next
 matching event with `waitbus wait` -- any source, any field, exit code
-carries the verdict:
+carries the verdict. The `wait` side is always zero-setup; the *event* it
+waits for still has to be produced by something (an opt-in emitter or a source
+watcher), so each example below notes what must be emitting for it to return:
 
 ```bash
-# pytest: wait for any session to finish (zero setup -- local source)
+# pytest: wait for any session to finish.
+# wait is zero-setup; a pytest_session event needs the opt-in emitter --
+# run your suite with:  pytest -p waitbus.sources.pytest_emit --waitbus-emit
 waitbus wait --source pytest --match 'fields.event_type="pytest_session"' --timeout 10m
 
-# Docker: wait for a container to exit (zero setup -- local source)
+# Docker: wait for a container to exit.
+# wait is zero-setup; a docker_container event needs the docker watcher running --
+# start it with:  waitbus source docker   (see `waitbus source docker --help`)
 waitbus wait --source docker --match 'fields.event_type="docker_container"' --timeout 30s
 
-# Filesystem: wait for a watched path to change (zero setup -- local source)
+# Filesystem: wait for a watched path to change.
+# wait is zero-setup; an fs_change event needs the fs watcher running --
+# start it with:  waitbus source fs <dir>  (see `waitbus source fs --help`)
 waitbus wait --source fs --match 'fields.event_type="fs_change"' --timeout 5m
 
 # GitHub CI: wait on a commit's terminal conclusion (needs webhook wiring -- see below)
@@ -369,12 +412,21 @@ See [platform support](#platform-support).
 
 ### As a Claude Code plugin
 
+Until a marketplace / MCP-registry entry is published, load the plugin from a
+local checkout of this repository. The manifest at `.claude-plugin/plugin.json`
+references the repo-root `.mcp.json`, so `--plugin-dir` must point at the
+checkout root (not a subdirectory):
+
 ```bash
-claude --plugin-dir ~/.local/share/waitbus/plugin
+git clone https://github.com/astrogilda/waitbus
+claude --plugin-dir ./waitbus --dangerously-load-development-channels
 ```
 
-Or use the marketplace entry once it is published to the MCP Registry (see
-CHANGELOG.md for current status). The plugin enables `/waitbus` slash
+`--dangerously-load-development-channels` is required to load a plugin from a
+local directory that is not a published marketplace entry (the same invocation
+documented in [CONTRIBUTING.md](.github/CONTRIBUTING.md)). Once the marketplace
+entry is published to the MCP Registry (see CHANGELOG.md for current status),
+install it from there instead. Either way the plugin enables `/waitbus` slash
 commands and the `waitbus` skill inside any Claude Code session.
 
 ---
@@ -507,7 +559,9 @@ workstation tool, not a security boundary between processes you run. Peer
 authentication is by kernel-verified UID (`SO_PEERCRED`), so a *different* user
 cannot connect, but same-user isolation is out of scope by design.
 
-To verify the release artifacts:
+To verify the release artifacts (requires the `gh` CLI, network access, and a
+published GitHub release that carries attestations -- so this is not a
+run-it-offline-in-a-clone check):
 
 ```bash
 gh attestation verify $(python -c "import waitbus; print(waitbus.__file__)") \
@@ -540,7 +594,9 @@ systemctl --user start waitbus-broadcast.socket
 systemctl --user start waitbus-etag-poll.timer
 systemctl --user start waitbus-watchdog.timer
 
-# Health check — exits 1 on any missing required config or stopped unit
+# Health check — exits 1 on any missing required config or stopped unit.
+# A non-zero exit right after install (before you start the daemons) is
+# expected, not a failure: it just reports that the units are not up yet.
 waitbus doctor
 
 # Watch webhook deliveries arrive in real time
@@ -603,11 +659,13 @@ path is available from the first `systemctl --user` call in any session.
 
 ## Wiring up repositories
 
-**Local sources need no wiring.** pytest, Docker, and filesystem events are
-produced on the box itself -- once the daemons are running (Quick start above),
-`waitbus wait --source pytest|docker|fs` works with zero per-repo setup. The two
-subsections below are only for GitHub CI, which arrives over a webhook and
-therefore needs a forwarder.
+**Local sources need no per-repo wiring.** pytest, Docker, and filesystem
+events are produced on the box itself, so there is no webhook forwarder to set
+up. Once the daemons are running (Quick start above) and the relevant producer
+is emitting -- the pytest opt-in emitter, or the `waitbus source docker` /
+`waitbus source fs` watchers -- `waitbus wait --source pytest|docker|fs` needs
+zero per-repo configuration. The two subsections below are only for GitHub CI,
+which arrives over a webhook and therefore needs a forwarder.
 
 **Event-driven (preferred for repos you own):**
 
