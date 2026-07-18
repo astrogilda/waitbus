@@ -10,6 +10,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 Pre-1.0 releases may refine the API based on real-world usage; v1.0 will
 declare API stability after a period of stable public use.
 
+## [0.2.1](https://github.com/astrogilda/waitbus/compare/v0.2.0...v0.2.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **build:** relax the uv pin to a floor so uv run works on current uv ([590d55f](https://github.com/astrogilda/waitbus/commit/590d55f61a76cf047356ebc452d6dfea6c4f8649))
+* **ci:** close the pedantic-persona zizmor findings ([ef30d75](https://github.com/astrogilda/waitbus/commit/ef30d75f0f8f07b5be271b7d44e292e44345be63))
+* **ci:** close the zizmor workflow audit and pin the uv version ([fc5da59](https://github.com/astrogilda/waitbus/commit/fc5da593d45252b4c3585991a12195ada091f02c))
+* **ci:** keep the nightly bench in budget and always upload results ([f5fbc3b](https://github.com/astrogilda/waitbus/commit/f5fbc3b65b3c3aea3abe86c2ead9c0033e4aaf0c))
+* **ci:** pin uv to 0.10.8 consistently across CI and the resolver gate ([3dfaccb](https://github.com/astrogilda/waitbus/commit/3dfaccb7d7b8fe7890a3a1cfe2000ca6709584ca))
+* **demo:** refuse to render when waitbus is not on PATH ([bc27ea3](https://github.com/astrogilda/waitbus/commit/bc27ea3dab2b2efdd14df579d04d432283f7d76c))
+* **deps:** bump mcp and setuptools to clear the OSV advisories ([447b64e](https://github.com/astrogilda/waitbus/commit/447b64e34afb70a2987c66b3103f10684e68e4a1))
+* **release:** bump CITATION.cff and guard it against version drift ([271af7a](https://github.com/astrogilda/waitbus/commit/271af7a8e3ca88eeabb5302af33eabab2fc55ecd))
+
+
+### Documentation
+
+* **examples:** correct the hero_swarm agent-source description ([a4e9634](https://github.com/astrogilda/waitbus/commit/a4e96343d3ea0fcc4067bd17cf960173b0d9cf53))
+* **readme:** lead with the working proof and fix the reviewer paths ([194d75c](https://github.com/astrogilda/waitbus/commit/194d75c004c6b22c519db78db8c9c24f0a2651b3))
+* tighten the demo captions to plain punctuation ([002c65d](https://github.com/astrogilda/waitbus/commit/002c65d4d7a84fc8b0ffd97dfc09c937259f4dc3))
+
 ## [0.2.0](https://github.com/astrogilda/waitbus/compare/waitbus-v0.1.6...waitbus-v0.2.0) (2026-06-24)
 
 
