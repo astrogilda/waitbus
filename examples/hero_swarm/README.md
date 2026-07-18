@@ -33,7 +33,7 @@ B in process Y".
 - The `agent` source is a **first-class built-in** waitbus source. It owns the
   `agent_message`, `agent_claim`, and `agent_task_failed` event types in the
   built-in source taxonomy (see `waitbus/sources/_registry.py`). The failing
-  worker simply `emit()`s an `agent_task_failed` against it -- there is **no
+  worker simply `emit()`s an `agent_task_failed` against it, with **no
   in-process registration step**, because the daemon's `event_types_supported()`
   already knows the type. (A taxonomy entry is a validation entry only; it
   starts no daemon-resident watcher, so the daemon footprint is unchanged.)

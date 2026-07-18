@@ -14,9 +14,9 @@ Below: a **Pydantic AI** agent and a **LangGraph** agent, two *different* framew
 
 ![waitbus cross-harness demo: two different agent frameworks on one local bus; one agent fails and the peer reacts](docs/demo/.waitbus-demo/hero.gif)
 
-<sub>Real frameworks and real waitbus subscribe/emit; the agents' LLMs are deterministic fakes and the failure is an injected event, so the clip runs fully offline. <strong>Reproduce the claim</strong> (not just the recording): run <code>uvx waitbus demo</code> for the gentler single-agent walk-through -- no clone, no install -- or, for the exact two-framework proof shown above, clone the repo and run <code>uv run --group agent-recipes python -m examples.hero_swarm</code> (Linux-verified; prints <code>PROVEN: two DIFFERENT frameworks woke on ONE peer's failure</code>). Higher-quality MP4 at <a href="docs/demo/.waitbus-demo/hero.mp4"><code>hero.mp4</code></a>. <em>Maintainers re-render this recording from <code>docs/demo/.waitbus-demo/</code> with <code>make hero</code> (dev-only; needs vhs, ttyd, tmux, and JetBrains Mono).</em></sub>
+<sub>Real frameworks and real waitbus subscribe/emit; the agents' LLMs are deterministic fakes and the failure is an injected event, so the clip runs fully offline. <strong>Reproduce the claim</strong> (not just the recording): run <code>uvx waitbus demo</code> for the gentler single-agent walk-through (no clone, no install), or, for the exact two-framework proof shown above, clone the repo and run <code>uv run --group agent-recipes python -m examples.hero_swarm</code> (Linux-verified; prints <code>PROVEN: two DIFFERENT frameworks woke on ONE peer's failure</code>). Higher-quality MP4 at <a href="docs/demo/.waitbus-demo/hero.mp4"><code>hero.mp4</code></a>. <em>Maintainers re-render this recording from <code>docs/demo/.waitbus-demo/</code> with <code>make hero</code> (dev-only; needs vhs, ttyd, tmux, and JetBrains Mono).</em></sub>
 
-> **Try it now, no install:** `uvx waitbus demo` -- boots a real local bus and returns the instant an event lands, fully offline (~8 s).
+> **Try it now, no install:** `uvx waitbus demo` boots a real local bus and returns the instant an event lands, fully offline (~8 s).
 
 ---
 
