@@ -63,7 +63,7 @@ jobs:
           enable-cache: false
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -464,7 +464,7 @@ jobs:
         # Kept over a `gh release` script: body_path + fail_on_unmatched_files
         # behavior is relied on; rewriting is out of scope for a security pass.
         # zizmor: ignore[superfluous-actions]
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           body_path: /tmp/release-notes.md
           files: ${{ env.ZIP_PATH }}
