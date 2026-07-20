@@ -89,7 +89,7 @@ repos:
         files: ^(waitbus/.*\.py|scripts/.*\.py|benchmarks/.*\.py|pyproject\.toml)$
         pass_filenames: false
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.18
+    rev: v0.15.22
     hooks:
       - id: ruff-check
         args: [--fix]
