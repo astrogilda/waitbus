@@ -41,7 +41,7 @@ graph = build_graph(socket_path="/path/to/broadcast.sock", timeout=5.0)
 final_state = graph.invoke({"event_type": None, "summary": None, "reacted": False})
 assert final_state["reacted"] is True
 print(final_state["event_type"])  # "docker_container"
-print(final_state["summary"])     # the fake model's deterministic reply
+print(final_state["summary"])  # the fake model's deterministic reply
 ```
 
 `run(socket_path)` is a convenience wrapper that compiles and invokes in one

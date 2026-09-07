@@ -299,8 +299,7 @@ the deprecated `launchctl load -w`).
 from waitbus import subscribe, wait_for, EventFrame
 
 # Block until one matching event arrives (returns the frame, or None on timeout).
-frame: EventFrame | None = wait_for('fields.event_type="pytest_session"',
-                                    source="pytest", timeout=600)
+frame: EventFrame | None = wait_for('fields.event_type="pytest_session"', source="pytest", timeout=600)
 if frame is not None:
     print(frame.event_type, frame.fields)
 
@@ -318,7 +317,7 @@ from waitbus import request, respond, wait_for
 # responder (agent_b), in its own process
 msg = wait_for(to="agent_b", source="agent", timeout=5.0)
 if msg is not None:
-    respond(msg, '{"answer": 42}')             # sender defaults to msg's recipient
+    respond(msg, '{"answer": 42}')  # sender defaults to msg's recipient
 
 # requester (agent_a)
 reply = request("agent_b", '{"ask": "meaning"}', sender="agent_a", timeout=5.0)
