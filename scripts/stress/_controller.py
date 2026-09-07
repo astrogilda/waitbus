@@ -413,7 +413,7 @@ class _ParseFailed(msgspec.Struct, frozen=True, kw_only=True):
     reason: str
 
 
-def _token_usage_from_marker(fields: dict[str, Any]) -> TokenUsage | None | _ParseFailed:
+def _token_usage_from_marker(fields: dict[str, Any]) -> TokenUsage | _ParseFailed | None:
     """Re-hydrate a ``TokenUsage`` from the wake-marker payload.
 
     Three type-distinct outcomes:
