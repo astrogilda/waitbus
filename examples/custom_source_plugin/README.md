@@ -150,6 +150,7 @@ from waitbus.sources._protocol import SOURCE_PLUGIN_API_VERSION, SourceSpec
 if TYPE_CHECKING:
     from waitbus._types import EventInsert
 
+
 class MySourcePlugin:
     def spec(self) -> SourceSpec:
         return SourceSpec(
@@ -190,10 +191,12 @@ source emits a known payload shape, you can pass a `msgspec.Struct` subclass:
 ```python
 import msgspec
 
+
 class PipelinePayload(msgspec.Struct, frozen=True):
     pipeline_id: str
     status: str
     branch: str | None = None
+
 
 # In spec():
 return SourceSpec(
