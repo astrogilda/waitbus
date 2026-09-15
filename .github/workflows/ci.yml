@@ -458,3 +458,71 @@ jobs:
           assert len(PROTOCOL_VERSIONS_SUPPORTED) > 0;
           assert PROTOCOL_VERSION == PROTOCOL_VERSIONS_SUPPORTED[-1];
           print(f'canary {PROTOCOL_VERSION!r} from tuple {PROTOCOL_VERSIONS_SUPPORTED!r}')"
+
+  gates-armed:
+    # The version-agnostic gates in the `python` job -- pre-commit, mypy and
+    # the OSV vulnerability scan -- run behind `if: env.CANONICAL_CELL == '1'`,
+    # which is true only on the ubuntu + 3.13 cell. If that cell ever leaves
+    # the matrix (a routine edit when the supported-version window rolls),
+    # every one of those gates stops running and the workflow still reports
+    # green: a lint, a type check and a CVE scan silently disarmed by an edit
+    # that looks unrelated to any of them. Nothing in the matrix asserts the
+    # cell exists, so this job does, by evaluating the same predicate the
+    # `if:` guards use against the matrix declared in this very file. It is
+    # hermetic (no network, no install) and fails loudly with the cell list it
+    # actually saw.
+    name: Canonical-cell gates are armed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Assert exactly one matrix cell satisfies CANONICAL_CELL
+        run: |
+          python3 - <<'PY'
+          import json, re, pathlib, sys
+
+          text = pathlib.Path(".github/workflows/ci.yml").read_text()
+
+          # Parse the `include:` block of the `python` job's matrix without a
+          # YAML dependency: the block is a flat list of `- os: X` /
+          # `python-version: "Y"` pairs at a fixed indent.
+          block = re.search(
+              r"\n        include:\n((?:          [-\s].*\n|\n)+)", text
+          )
+          if block is None:
+              sys.exit("could not locate the python job's matrix include block")
+
+          cells, current = [], {}
+          for line in block.group(1).splitlines():
+              stripped = line.strip()
+              if not stripped:
+                  continue
+              if stripped.startswith("- "):
+                  if current:
+                      cells.append(current)
+                  current, stripped = {}, stripped[2:]
+              key, _, value = stripped.partition(":")
+              current[key.strip()] = value.strip().strip('"')
+          if current:
+              cells.append(current)
+
+          if not cells:
+              sys.exit("parsed zero matrix cells: the parser, not the matrix, is broken")
+
+          # Same predicate as the CANONICAL_CELL expression in the env block.
+          canonical = [
+              c for c in cells
+              if "ubuntu" in c.get("os", "") and c.get("python-version") == "3.13"
+          ]
+          print(json.dumps({"cells": cells, "canonical": canonical}, indent=2))
+
+          if len(canonical) != 1:
+              sys.exit(
+                  f"expected exactly 1 canonical cell (ubuntu + 3.13), found "
+                  f"{len(canonical)}. pre-commit, mypy and the OSV vulnerability "
+                  f"scan are gated on it and would not run."
+              )
+          print("canonical cell present: pre-commit, mypy and the OSV scan are armed")
+          PY
