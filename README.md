@@ -757,5 +757,6 @@ waitbus is released under the MIT License. See [LICENSE](LICENSE) for the full t
 - [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md): per-surface dev guide, loading the plugin locally
 - [docs/emitters/recipes.md](docs/emitters/recipes.md): shell and docker emit recipes, plus the CloudEvents envelope mapping for external producers
 - [docs/emitters/claude-code-hook.md](docs/emitters/claude-code-hook.md): emit a bus event on Claude Code session lifecycle hooks
+- [agent-evidence-vectors](https://github.com/astrogilda/agent-evidence-vectors): by the same author, a conformance vector suite and reference verifier for the adversarial-execution-evidence in-toto predicate
 
 
