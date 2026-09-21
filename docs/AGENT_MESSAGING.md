@@ -38,12 +38,12 @@ from waitbus import request, respond, wait_for
 # --- agent_b (responder), e.g. in its own process / thread ---
 msg = wait_for(to="agent_b", source="agent", timeout=5.0)
 if msg is not None:
-    respond(msg, '{"answer": 42}')          # sender defaults to msg's recipient
+    respond(msg, '{"answer": 42}')  # sender defaults to msg's recipient
 
 # --- agent_a (requester) ---
 reply = request("agent_b", '{"ask": "meaning"}', sender="agent_a", timeout=5.0)
 if reply is None:
-    ...                                      # timed out; nobody answered
+    ...  # timed out; nobody answered
 else:
     assert reply.fields["msg_from"] == "agent_b"
     assert reply.fields["msg_to"] == "agent_a"
@@ -62,7 +62,7 @@ from waitbus import subscribe
 
 for msg in subscribe(to="agent_b", source="agent"):
     sender = msg.fields["msg_from"]
-    body = msg.fields["msg_body"]      # the message content, carried on the wire
+    body = msg.fields["msg_body"]  # the message content, carried on the wire
     handle(sender, body)
 ```
 
