@@ -13,7 +13,9 @@ AI's internal state machine.
 
 from __future__ import annotations
 
+import asyncio
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from threading import Thread
 
@@ -34,6 +36,34 @@ pytestmark = [
 ]
 
 
+def _closing_thread_loop(target: Callable[[], None]) -> Callable[[], None]:
+    """Run ``target`` on a worker thread, then close the event loop it left behind.
+
+    ``Agent.run_sync`` outside a running loop creates a fresh event loop for the
+    calling thread, installs it with ``asyncio.set_event_loop`` and never closes
+    it. When that loop is garbage-collected it raises ``ResourceWarning:
+    unclosed event loop`` (and one for each of its self-pipe sockets), which the
+    strict unraisable-exception gate turns into a teardown error. The thread
+    owns the loop, so the thread closes it.
+    """
+
+    def _run() -> None:
+        try:
+            target()
+        finally:
+            loop: asyncio.AbstractEventLoop | None
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # No loop was ever installed on this thread (target failed first).
+                loop = None
+            if loop is not None and not loop.is_closed():
+                loop.close()
+            asyncio.set_event_loop(None)
+
+    return _run
+
+
 def _start_agent(socket_path: str) -> AgentRun:
     """Launch the Pydantic AI agent on a worker thread.
 
@@ -52,7 +82,7 @@ def _start_agent(socket_path: str) -> AgentRun:
         deps = WaitbusDeps(socket_path=socket_path, timeout=5.0, capture=capture)
         agent.run_sync("Wait for the next waitbus event.", deps=deps)
 
-    thread = Thread(target=_run, name="pydantic-ai-agent", daemon=True)
+    thread = Thread(target=_closing_thread_loop(_run), name="pydantic-ai-agent", daemon=True)
     thread.start()
     return AgentRun(
         thread=thread,
@@ -89,7 +119,7 @@ def _start_run_wrapper(socket_path: str) -> AgentRun:
 
         holder["capture"] = run(socket_path, timeout=5.0)
 
-    thread = Thread(target=_run, name="pydantic-ai-run", daemon=True)
+    thread = Thread(target=_closing_thread_loop(_run), name="pydantic-ai-run", daemon=True)
     thread.start()
     return AgentRun(
         thread=thread,
