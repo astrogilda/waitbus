@@ -1289,17 +1289,25 @@ def _build_limitations() -> list[str]:
     return [
         "p99 latency CI half-width at n=50 ~= 5x median CI; p99 NOT used for driver ranking",
         f"{BENCH_GEMINI_MODEL} alias is floating; observed model id set recorded in external_state but not pinned",
-        "Anthropic prompt cache 5-min decay defeated by per-iteration force_cold_cache_prefix; "
-        "if iteration wall-clock exceeds 5 min cache state may degrade",
+        (
+            "Anthropic prompt cache 5-min decay defeated by per-iteration force_cold_cache_prefix; "
+            "if iteration wall-clock exceeds 5 min cache state may degrade"
+        ),
         "claude / gemini CLIs expose no --seed or --temperature; sampling is black-box; distribution-level claims only",
         "asyncio scheduling jitter seeded via PYTHONHASHSEED but not eliminated; p99 not cross-operator-comparable",
         "OPENAI_API_KEY presence recorded as bool; key value never persisted",
-        "per-driver verdict is a median latency description with bootstrap CI bands; "
-        "no marginal hypothesis test runs here (no across-arm rejection gate)",
-        "this bench writes NEW verdict files alongside any shipped stress-test verdict.json; "
-        "it does NOT modify historical stress-test artifacts",
-        "pilot gate: 10-iteration pilot validates sigma_idle assumption before main run; "
-        "abort if pilot sigma exceeds plan by >2x",
+        (
+            "per-driver verdict is a median latency description with bootstrap CI bands; "
+            "no marginal hypothesis test runs here (no across-arm rejection gate)"
+        ),
+        (
+            "this bench writes NEW verdict files alongside any shipped stress-test verdict.json; "
+            "it does NOT modify historical stress-test artifacts"
+        ),
+        (
+            "pilot gate: 10-iteration pilot validates sigma_idle assumption before main run; "
+            "abort if pilot sigma exceeds plan by >2x"
+        ),
     ]
 
 
