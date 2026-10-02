@@ -247,8 +247,10 @@ def _check_regression(current: dict[str, Any], baseline_path: Path) -> tuple[boo
     if abs(ratio - 1.0) > _REGRESSION_THRESHOLD:
         return (
             False,
-            f"aggregate drift: current={current_agg} vs baseline={baseline_agg} "
-            f"(ratio={ratio:.3f}; threshold=+/-{_REGRESSION_THRESHOLD * 100:.0f}%)",
+            (
+                f"aggregate drift: current={current_agg} vs baseline={baseline_agg} "
+                f"(ratio={ratio:.3f}; threshold=+/-{_REGRESSION_THRESHOLD * 100:.0f}%)"
+            ),
         )
     return (
         True,

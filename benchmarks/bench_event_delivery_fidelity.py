@@ -1571,85 +1571,109 @@ def _aggregate_arm(arm: str, rows: Sequence[dict[str, Any]]) -> _ArmLatencyStats
 def _build_limitations() -> list[str]:
     """Documented limitations recorded in the verdict.json."""
     return [
-        "Wilcoxon signed-rank paired test uses scipy.stats.wilcoxon with default "
-        "ties handling (wilcox) and exact/approximate auto-method selection; the "
-        "p-value tail is the bench's load-bearing rejection signal.",
-        "Bonferroni correction across three marginals (per_chunk_bus_latency, TTFT, "
-        "wall_time) yields alpha_per_marginal = 0.05/3 = 0.01666...; a downstream "
-        "consumer that wants Holm-Bonferroni or BH-FDR re-applies the correction "
-        "on the three p-values stored in the verdict.",
-        "The bus_swarm arm's concurrent load is N lightweight waitbus "
-        "subscribers (subscribe + drain, NO LLM), not a real-LLM swarm. "
-        "The arm's load variable is the daemon's per-subscriber fan-out, "
-        "identical whether the subscriber later calls an LLM or not, so the "
-        "lightweight subscribers impose the same load deterministically and "
-        "subscribe instantly (no cold-start, hence no warmup barrier). The "
-        "subscriber-underload floor is _SWARM_SUBSCRIBER_COUNT * N_iter "
-        "(every subscriber READY every iter); the 70% threshold is "
-        "preserved. Heterogeneity and slow-consumer backpressure are "
-        "verified covered elsewhere (tests/test_hero_swarm_e2e.py for real "
-        "distinct pydantic_ai + langgraph processes; the soak drain-smoke "
-        "for a genuinely-evicted non-draining subscriber), not assumed.",
-        "The delivery-integrity check is a genuine round-trip: for each arm "
-        "the consumer-delivered bytes are RE-HASHED (over iter_id||seq||bytes, "
-        "ignoring the frame's embedded chunk_hash_hex) and compared against the "
-        "per-iteration source manifest. A non-zero "
-        "delivery_integrity_failures_<arm> count therefore means a real waitbus / "
-        "UDS drop (a source seq the consumer never received) or corruption (the "
-        "delivered bytes hash differently from the source), NOT model-side "
-        "generation non-determinism. The counters are per-arm-vs-source, so a "
-        "reader can attribute a failure to a specific transport arm.",
-        "The ordering-fidelity check is a genuine round-trip: for each arm the "
-        "consumer-delivered seqs are decoded in ARRIVAL order and compared against "
-        "the monotonic source emit order by counting out-of-order ('descent') "
-        "deliveries -- a seq that arrived after a strictly greater seq. waitbus "
-        "guarantees a daemon-assigned monotonic delivery sequence, so a non-zero "
-        "ordering_inversions_<arm> count is a real waitbus / UDS reordering bug, NOT "
-        "model-side generation non-determinism. This counter folds into the same "
-        "exit-1 delivery-fidelity gate as delivery_integrity_failures_<arm>.",
-        "The single generation call uses seed=42 + temperature=0, documented as "
-        "best-effort deterministic; because content is generated once and "
-        "replayed (not re-generated) per arm, generation non-determinism affects "
-        "only which text is segmented, never the per-arm delivery-integrity "
-        "counters (which compare delivered bytes against that iteration's own "
-        "source manifest).",
-        "UDS sibling-process IPC carries length-prefixed JSON frames (4-byte "
-        "big-endian uint32 + JSON). The raw-IPC (lll_alone) arm is retained "
-        "ONLY as an integrity control: its delivery-integrity and ordering "
-        "counters are still gated (a drop/corruption/reorder in the harness's "
-        "own framing must surface), but its per-event latency is RECORDED, "
-        "never gated and never used as a comparison baseline. "
-        "Comparing a durable ms-scale bus to a non-durable us-scale raw pipe "
-        "by latency ratio or distribution is a category error that penalizes "
-        "waitbus's core feature (durability), so both the former ratio gate and "
-        "the distribution-equivalence-vs-IPC test are omitted.",
-        "The latency claim is an ABSOLUTE per-event budget, PRE-REGISTERED "
-        "before the first full-N run: the bus arms' p99 per-event delivery "
-        "latency must be <= 100ms. The 100ms is derived FORWARD from Nielsen's "
-        "canonical HCI limit (0.1s = the threshold below which a system is "
-        "perceived to react instantaneously to a human) and cross-checked "
-        "against waitbus's own ~27ms emit-cost floor (~3.7x headroom); it is NOT "
-        "back-fit to any observed measurement. "
-        "Perturbation is measured bus_idle vs bus_swarm (same transport, "
-        "varying swarm load): a Wilcoxon equivalence test on the per-event "
-        "delivery latency between the two waitbus arms answers whether "
-        "concurrent heterogeneous subscriber load perturbs waitbus's own "
-        "delivery latency. The raw-IPC arm is NOT in this comparison.",
-        "Linux-only: /proc/<pid>/status VmRSS, AF_UNIX SOCK_STREAM, and cross-"
-        "process CLOCK_MONOTONIC are all load-bearing.",
-        "OFFLINE mode (--skip-real-llm) exercises the same emit + subscribe + "
-        "spawn paths as the real-LLM mode but bypasses the OpenAI HTTP call; "
-        "the synthetic reasoning text is byte-identical across re-runs and is "
-        "segmented into the same discrete events replayed through every arm, so "
-        "the per-arm delivery-integrity counters are guaranteed zero modulo a "
-        "real bus / UDS delivery bug.",
-        "Smoke mode (--smoke) shortens N to 3 by default; it does NOT switch to "
-        "synthetic mocks for any other component (waitbus daemon + subscribe + "
-        "lightweight subscribers all run real).",
-        "The bench's per-iteration arm-deadline is "
-        f"{_PER_ARM_DEADLINE_SEC:.0f}s (generation timeout + drain budget); "
-        "iterations whose replay/consumer breach this deadline are recorded as "
-        "skipped iterations (no row contributes to the marginal samples).",
+        (
+            "Wilcoxon signed-rank paired test uses scipy.stats.wilcoxon with default "
+            "ties handling (wilcox) and exact/approximate auto-method selection; the "
+            "p-value tail is the bench's load-bearing rejection signal."
+        ),
+        (
+            "Bonferroni correction across three marginals (per_chunk_bus_latency, TTFT, "
+            "wall_time) yields alpha_per_marginal = 0.05/3 = 0.01666...; a downstream "
+            "consumer that wants Holm-Bonferroni or BH-FDR re-applies the correction "
+            "on the three p-values stored in the verdict."
+        ),
+        (
+            "The bus_swarm arm's concurrent load is N lightweight waitbus "
+            "subscribers (subscribe + drain, NO LLM), not a real-LLM swarm. "
+            "The arm's load variable is the daemon's per-subscriber fan-out, "
+            "identical whether the subscriber later calls an LLM or not, so the "
+            "lightweight subscribers impose the same load deterministically and "
+            "subscribe instantly (no cold-start, hence no warmup barrier). The "
+            "subscriber-underload floor is _SWARM_SUBSCRIBER_COUNT * N_iter "
+            "(every subscriber READY every iter); the 70% threshold is "
+            "preserved. Heterogeneity and slow-consumer backpressure are "
+            "verified covered elsewhere (tests/test_hero_swarm_e2e.py for real "
+            "distinct pydantic_ai + langgraph processes; the soak drain-smoke "
+            "for a genuinely-evicted non-draining subscriber), not assumed."
+        ),
+        (
+            "The delivery-integrity check is a genuine round-trip: for each arm "
+            "the consumer-delivered bytes are RE-HASHED (over iter_id||seq||bytes, "
+            "ignoring the frame's embedded chunk_hash_hex) and compared against the "
+            "per-iteration source manifest. A non-zero "
+            "delivery_integrity_failures_<arm> count therefore means a real waitbus / "
+            "UDS drop (a source seq the consumer never received) or corruption (the "
+            "delivered bytes hash differently from the source), NOT model-side "
+            "generation non-determinism. The counters are per-arm-vs-source, so a "
+            "reader can attribute a failure to a specific transport arm."
+        ),
+        (
+            "The ordering-fidelity check is a genuine round-trip: for each arm the "
+            "consumer-delivered seqs are decoded in ARRIVAL order and compared against "
+            "the monotonic source emit order by counting out-of-order ('descent') "
+            "deliveries -- a seq that arrived after a strictly greater seq. waitbus "
+            "guarantees a daemon-assigned monotonic delivery sequence, so a non-zero "
+            "ordering_inversions_<arm> count is a real waitbus / UDS reordering bug, NOT "
+            "model-side generation non-determinism. This counter folds into the same "
+            "exit-1 delivery-fidelity gate as delivery_integrity_failures_<arm>."
+        ),
+        (
+            "The single generation call uses seed=42 + temperature=0, documented as "
+            "best-effort deterministic; because content is generated once and "
+            "replayed (not re-generated) per arm, generation non-determinism affects "
+            "only which text is segmented, never the per-arm delivery-integrity "
+            "counters (which compare delivered bytes against that iteration's own "
+            "source manifest)."
+        ),
+        (
+            "UDS sibling-process IPC carries length-prefixed JSON frames (4-byte "
+            "big-endian uint32 + JSON). The raw-IPC (lll_alone) arm is retained "
+            "ONLY as an integrity control: its delivery-integrity and ordering "
+            "counters are still gated (a drop/corruption/reorder in the harness's "
+            "own framing must surface), but its per-event latency is RECORDED, "
+            "never gated and never used as a comparison baseline. "
+            "Comparing a durable ms-scale bus to a non-durable us-scale raw pipe "
+            "by latency ratio or distribution is a category error that penalizes "
+            "waitbus's core feature (durability), so both the former ratio gate and "
+            "the distribution-equivalence-vs-IPC test are omitted."
+        ),
+        (
+            "The latency claim is an ABSOLUTE per-event budget, PRE-REGISTERED "
+            "before the first full-N run: the bus arms' p99 per-event delivery "
+            "latency must be <= 100ms. The 100ms is derived FORWARD from Nielsen's "
+            "canonical HCI limit (0.1s = the threshold below which a system is "
+            "perceived to react instantaneously to a human) and cross-checked "
+            "against waitbus's own ~27ms emit-cost floor (~3.7x headroom); it is NOT "
+            "back-fit to any observed measurement. "
+            "Perturbation is measured bus_idle vs bus_swarm (same transport, "
+            "varying swarm load): a Wilcoxon equivalence test on the per-event "
+            "delivery latency between the two waitbus arms answers whether "
+            "concurrent heterogeneous subscriber load perturbs waitbus's own "
+            "delivery latency. The raw-IPC arm is NOT in this comparison."
+        ),
+        (
+            "Linux-only: /proc/<pid>/status VmRSS, AF_UNIX SOCK_STREAM, and cross-"
+            "process CLOCK_MONOTONIC are all load-bearing."
+        ),
+        (
+            "OFFLINE mode (--skip-real-llm) exercises the same emit + subscribe + "
+            "spawn paths as the real-LLM mode but bypasses the OpenAI HTTP call; "
+            "the synthetic reasoning text is byte-identical across re-runs and is "
+            "segmented into the same discrete events replayed through every arm, so "
+            "the per-arm delivery-integrity counters are guaranteed zero modulo a "
+            "real bus / UDS delivery bug."
+        ),
+        (
+            "Smoke mode (--smoke) shortens N to 3 by default; it does NOT switch to "
+            "synthetic mocks for any other component (waitbus daemon + subscribe + "
+            "lightweight subscribers all run real)."
+        ),
+        (
+            "The bench's per-iteration arm-deadline is "
+            f"{_PER_ARM_DEADLINE_SEC:.0f}s (generation timeout + drain budget); "
+            "iterations whose replay/consumer breach this deadline are recorded as "
+            "skipped iterations (no row contributes to the marginal samples)."
+        ),
     ]
 
 

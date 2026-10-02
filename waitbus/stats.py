@@ -281,19 +281,29 @@ def _estimate(facts: MeasuredFacts, req: StatsRequest) -> Estimate:
 # from this CLI process. Stated verbatim so the operator is never shown
 # a zero that looks measured.
 _COUNTER_CAVEATS: Final[tuple[str, ...]] = (
-    "events_delivered is NOT a single counter: daemon-side it is proxied "
-    "by waitbus_watermark_replay_events_total plus the waitbus_broadcast_send_"
-    "seconds histogram.",
-    "subscription_uptime is NOT a counter: it is a Grafana-side rate "
-    "derivation off the waitbus_subscriber_count / waitbus_broadcast_*_count "
-    "gauges.",
-    "waitbus_db_inserted_total's DB-side equivalent is measured.total_events "
-    "(COUNT(*)); the live counter itself lives in the daemon process.",
-    "waitbus_db_dedup_ignored_total is NOT recoverable from the events table "
-    "(a deduped insert lands no row); read it from the listener's /metrics "
-    "scrape, not here.",
-    "Live Prometheus counters are in-process to the daemons; scrape the "
-    "listener's /metrics endpoint for their current values.",
+    (
+        "events_delivered is NOT a single counter: daemon-side it is proxied "
+        "by waitbus_watermark_replay_events_total plus the waitbus_broadcast_send_"
+        "seconds histogram."
+    ),
+    (
+        "subscription_uptime is NOT a counter: it is a Grafana-side rate "
+        "derivation off the waitbus_subscriber_count / waitbus_broadcast_*_count "
+        "gauges."
+    ),
+    (
+        "waitbus_db_inserted_total's DB-side equivalent is measured.total_events "
+        "(COUNT(*)); the live counter itself lives in the daemon process."
+    ),
+    (
+        "waitbus_db_dedup_ignored_total is NOT recoverable from the events table "
+        "(a deduped insert lands no row); read it from the listener's /metrics "
+        "scrape, not here."
+    ),
+    (
+        "Live Prometheus counters are in-process to the daemons; scrape the "
+        "listener's /metrics endpoint for their current values."
+    ),
 )
 
 

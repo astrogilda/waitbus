@@ -2109,19 +2109,27 @@ def _build_verdict(
     per_iter_source_distribution = _per_iter_source_distribution(windows)
 
     limitations = [
-        f"Mann-Whitney detection threshold at n={n_per_arm}/side is "
-        f"{_MIN_DETECTABLE_EFFECT_SIGMA} sigma; smaller perturbations not detectable here",
-        "Cross-process timing replaced with in-process workload thread; "
-        "GIL contention may attenuate detectable perturbation; "
-        "wall_minus_thread_time_ns reports per-window GIL gap",
+        (
+            f"Mann-Whitney detection threshold at n={n_per_arm}/side is "
+            f"{_MIN_DETECTABLE_EFFECT_SIGMA} sigma; smaller perturbations not detectable here"
+        ),
+        (
+            "Cross-process timing replaced with in-process workload thread; "
+            "GIL contention may attenuate detectable perturbation; "
+            "wall_minus_thread_time_ns reports per-window GIL gap"
+        ),
         "asyncio scheduling jitter present; perturbation must exceed scheduler noise floor to register",
         f"{_GEMINI_MODEL} alias is floating; observed model id recorded but not pinned",
-        "Anthropic prompt cache 5-min decay defeated by per-iteration prefix; if iteration "
-        "wall-clock exceeds 5 min, cache state may degrade",
+        (
+            "Anthropic prompt cache 5-min decay defeated by per-iteration prefix; if iteration "
+            "wall-clock exceeds 5 min, cache state may degrade"
+        ),
         "claude/gemini CLIs expose no --seed/--temperature; sampling is black-box; distribution-level claims only",
         "OPENAI_API_KEY presence recorded as bool; key value never persisted",
-        "Per-event granularity locked at one event per producer per iteration (NOT per token); "
-        "verified from claude CLI empirical probe",
+        (
+            "Per-event granularity locked at one event per producer per iteration (NOT per token); "
+            "verified from claude CLI empirical probe"
+        ),
         f"p99 latency CI half-width at n={n_per_arm} ~ 5x median CI; p99 NOT used for driver ranking",
     ]
 

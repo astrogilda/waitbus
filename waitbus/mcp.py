@@ -1398,9 +1398,11 @@ def _completion_query(
         )
     # "ulid": newest-first over the partial-unique event_id index.
     return (
-        "SELECT event_id FROM events "
-        "WHERE event_id IS NOT NULL AND event_id LIKE ? ESCAPE '\\' "
-        "ORDER BY event_id DESC LIMIT ?",
+        (
+            "SELECT event_id FROM events "
+            "WHERE event_id IS NOT NULL AND event_id LIKE ? ESCAPE '\\' "
+            "ORDER BY event_id DESC LIMIT ?"
+        ),
         (like, fetch),
         "event_id",
     )
