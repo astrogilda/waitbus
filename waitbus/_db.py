@@ -453,6 +453,12 @@ def ensure_schema(db_path: Path) -> None:
     # table half-migrated and the next startup would silently skip the
     # rename half (idempotency guard fires on already-renamed column).
     with connect(db_path, isolation_level=None) as conn:
+        # Read the current columns while the 5-second busy_timeout from
+        # open_conn still applies. This read sits outside the retry loops
+        # below, so with busy_timeout=0 it raised "database is locked" at
+        # once whenever the other opener held the write lock on a fresh DB.
+        rows = conn.execute("PRAGMA table_info(events)").fetchall()
+        existing = {row[1] for row in rows}
         # Reset busy_timeout to zero for this connection: ensure_schema drives
         # its own Python-level retry loop (_run_migration_in_transaction) with
         # 100 ms sleeps between attempts. Keeping the 5-second busy_timeout
@@ -461,8 +467,6 @@ def ensure_schema(db_path: Path) -> None:
         # ~25 s across five retries. Zero means "raise immediately on lock" so
         # the Python loop controls the entire wait budget.
         conn.execute("PRAGMA busy_timeout=0")
-        rows = conn.execute("PRAGMA table_info(events)").fetchall()
-        existing = {row[1] for row in rows}
         # Parse schema_sql into individual DDL statements once; reused in both
         # Cannot split naively on ';' because schema.sql comments may
         # contain semicolons. ``split_sql_statements`` handles the
