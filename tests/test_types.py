@@ -62,7 +62,7 @@ def test_event_insert_kw_only() -> None:
             "github",
             "workflow_run",
             "o",
-            "r",  # type: ignore[misc]
+            "r",  # type: ignore[call-arg]
             time.time_ns(),
             "{}",
             "webhook",
