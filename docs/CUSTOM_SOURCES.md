@@ -62,6 +62,7 @@ path to the plugin singleton.
 # waitbus_circleci/__init__.py
 from waitbus.sources import SourceSpec
 
+
 class CircleCISource:
     def spec(self) -> SourceSpec:
         return SourceSpec(
@@ -70,6 +71,7 @@ class CircleCISource:
             payload_schema=None,
             api_version=1,
         )
+
 
 plugin = CircleCISource()
 ```
@@ -105,16 +107,18 @@ from waitbus import emit
 from waitbus._types import EventInsert
 
 # Inside your CircleCI poller's main loop:
-emit(EventInsert(
-    source="circleci",
-    event_type="pipeline_finished",
-    delivery_id="circleci-pipeline-12345",
-    owner="acme",
-    repo="widgets",
-    received_at=...,  # epoch ns
-    payload_json="{...}",
-    ingest_method="poll",
-))
+emit(
+    EventInsert(
+        source="circleci",
+        event_type="pipeline_finished",
+        delivery_id="circleci-pipeline-12345",
+        owner="acme",
+        repo="widgets",
+        received_at=...,  # epoch ns
+        payload_json="{...}",
+        ingest_method="poll",
+    )
+)
 ```
 
 (Earlier docs described an optional `fetch` method on the plugin
