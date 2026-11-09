@@ -39,7 +39,8 @@ concurrency:
 
 jobs:
   per-push:
-    if: github.event_name != 'release'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name != 'release')
     name: waitbus stress (per-push, single-N)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -81,7 +82,8 @@ jobs:
             stress-progress.jsonl
 
   per-tag:
-    if: github.event_name == 'release'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'release')
     name: waitbus stress (per-tag, full sweep)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -120,7 +122,8 @@ jobs:
             stress-progress.jsonl
 
   waitbus-stress-real:
-    if: github.event_name == 'release'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'release')
     name: waitbus stress (per-tag, real heterogeneous drivers)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
