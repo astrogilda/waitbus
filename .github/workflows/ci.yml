@@ -20,6 +20,8 @@ permissions:
 
 jobs:
   python:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     name: Tests (py${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -302,6 +304,8 @@ jobs:
           done
 
   adapters:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     # The adapter packages under adapters/ are standalone uv projects that
     # pin waitbus as an editable path dependency; the main `python` job's
     # suite never collects them. Without this job their ~4.7k lines
@@ -338,6 +342,8 @@ jobs:
         run: uv run --directory "adapters/$ADAPTER" python -m pytest -vv
 
   reproducibility:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     # Mirror the release.yml `reproducibility-check` job at PR time so
     # build-determinism regressions surface before they reach a tag.
     # Pinned SOURCE_DATE_EPOCH against the merge-base commit; two
@@ -376,6 +382,8 @@ jobs:
             <(sha256sum /tmp/build2/waitbus-*.whl | cut -d' ' -f1)
 
   server-json:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     # Validate the MCP Registry manifest (server.json) against its
     # declared `$schema` URL on every PR so a malformed manifest never
     # reaches the publish-mcp-registry job in release.yml. Uses uv's
@@ -402,6 +410,8 @@ jobs:
           server.json
 
   canary-mcp-sdk:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     # Forward-compat canary against the immediately-prior `mcp` SDK
     # releases. The current range (`mcp>=1.27.1,<1.28`) is exercised
     # by the main `python` job; this matrix runs the MCP wire fixtures
@@ -460,6 +470,8 @@ jobs:
           print(f'canary {PROTOCOL_VERSION!r} from tuple {PROTOCOL_VERSIONS_SUPPORTED!r}')"
 
   gates-armed:
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')
     # Every conditional gate in the `python` job keys on the matrix, and a
     # matrix edit can therefore disarm a gate while the workflow still
     # reports green. Three predicates carry gates:

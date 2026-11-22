@@ -41,7 +41,8 @@ permissions:
 jobs:
   smoke:
     name: bench-smoke (PR regression gate)
-    if: github.event_name == 'pull_request'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -91,7 +92,8 @@ jobs:
 
   nightly-full:
     name: bench-full (nightly + manual)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
