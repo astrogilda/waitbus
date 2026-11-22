@@ -40,7 +40,8 @@ permissions:
 jobs:
   changed-link-check:
     name: Link check changed markdown (blocking on new broken links)
-    if: github.event_name == 'pull_request'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,7 +90,8 @@ jobs:
 
   full-link-check:
     name: Full link sweep (advisory, weekly)
-    if: github.event_name == 'schedule'
+    # Batch-only CI (2026-11-09): runs on the merge-train pull request and on main, never on a plain pull request.
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'merge-train/')) && (github.event_name == 'schedule')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
